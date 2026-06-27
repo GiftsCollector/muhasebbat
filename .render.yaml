@@ -1,0 +1,11 @@
+services:
+- type: web
+  name: muhasebbat
+  runtime: python-3.11
+  buildCommand: pip install -r requirements.txt
+  startCommand: gunicorn --workers=1 --worker-class=sync --timeout=30 run:app
+  envVars:
+  - key: PYTHON_VERSION
+    value: 3.11.7
+  - key: FLASK_ENV
+    value: production
