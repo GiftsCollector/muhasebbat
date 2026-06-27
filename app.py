@@ -19,21 +19,25 @@ db.init_app(app)
 
 
 def initialize_database():
-    db_path = "data.db"
+    db_path = os.path.join(os.path.dirname(__file__), "instance", "data.db")
     need_create = not os.path.exists(db_path)
     if need_create:
-        db.create_all()
+        with app.app_context():
+            db.create_all()
     else:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(inventory_transaction)")
-        columns = [row[1] for row in cursor.fetchall()]
-        if "destination_warehouse" not in columns:
-            cursor.execute("ALTER TABLE inventory_transaction ADD COLUMN destination_warehouse TEXT")
-            conn.commit()
-        conn.close()
-
-with app.app_context():
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(inventory_transaction)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "destination_warehouse" not in columns:
+                cursor.execute("ALTER TABLE inventory_transaction ADD COLUMN destination_warehouse TEXT")
+                conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Database error: {e}")
+            with app.app_context():
+                db.create_all()
     initialize_database()
 
 
