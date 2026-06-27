@@ -1,0 +1,99 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <section class="hero-section p-4 p-lg-5 rounded-4 glass-card shadow-lg">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-4 align-items-start">
+        <div>
+          <h1 class="display-5 mb-3">شركة الشيخ للمقاولات العمومية</h1>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <a class="btn btn-outline-light btn-lg" href="{{ url_for('projects') }}">إدارة المشاريع</a>
+          <a class="btn btn-cyan btn-lg" href="{{ url_for('inventory') }}">إدارة المخزون</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">المشاريع</h5>
+        <p class="display-6">{{ projects }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">دليل الحسابات</h5>
+        <p class="display-6">{{ accounts }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">المستخلصات</h5>
+        <p class="display-6">{{ progress_payments }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">قيود اليومية</h5>
+        <p class="display-6">{{ journal_entries }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">أوامر الشراء</h5>
+        <p class="display-6">{{ purchase_orders }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">المخزون</h5>
+        <p class="display-6">{{ inventory_transactions }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">مقاولو الباطن</h5>
+        <p class="display-6">{{ subcontractors }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">الموردون</h5>
+        <p class="display-6">{{ suppliers }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">المعدات</h5>
+        <p class="display-6">{{ equipment_items }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-4">
+    <div class="card metric-card glass-card p-3 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">العمالة</h5>
+        <p class="display-6">{{ labor_entries }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

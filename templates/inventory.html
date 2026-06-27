@@ -1,0 +1,44 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">إدارة المخازن</h2>
+          <p class="text-muted">سجل الحركات المخزنية، التحويلات، والإضافة مع واجهة مرتبة وواضحة.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي الحركات: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">حركة مخزون جديدة</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">المشروع</label><select class="form-select" name="project_id" required>{% for item in projects %}<option value="{{ item.id }}">{{ item.code }}</option>{% endfor %}</select></div>
+        <div class="mb-3"><label class="form-label">المخزن</label><input class="form-control" name="warehouse_name" required></div>
+        <div class="mb-3"><label class="form-label">المادة</label><input class="form-control" name="material_name" required></div>
+        <div class="row g-3"><div class="col-md-4"><label class="form-label">الكمية</label><input type="number" step="0.01" class="form-control" name="quantity"></div><div class="col-md-4"><label class="form-label">تكلفة الوحدة</label><input type="number" step="0.01" class="form-control" name="unit_cost"></div><div class="col-md-4"><label class="form-label">النوع</label><select class="form-select" name="transaction_type"><option>إضافة</option><option>سحب</option><option>تحويل</option></select></div></div>
+        <div class="mb-3"><label class="form-label">المخزن الوجهة (لتحويل)</label><input class="form-control" name="destination_warehouse"></div>
+        <div class="mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date"></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <button class="btn btn-cyan mt-2">حفظ الحركة</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">سجل حركات المخزون</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>المشروع</th><th>المخزن</th><th>المادة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>النوع</th><th>التاريخ</th></tr></thead>
+          <tbody>{% for item in items %}<tr><td>{{ item.project.code }}</td><td>{{ item.warehouse_name }}</td><td>{{ item.material_name }}</td><td>{{ item.quantity }}</td><td>{{ item.unit_cost }}</td><td>{{ item.transaction_type }}</td><td>{{ item.date }}</td></tr>{% else %}<tr><td colspan="7" class="text-center text-muted">لا توجد حركات</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

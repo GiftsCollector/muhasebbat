@@ -1,0 +1,48 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">الموردون</h2>
+          <p class="text-muted">أضف الموردين وتمتع بواجهة عمل منظمة لتتبع بيانات الاتصال والملاحظات.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي الموردين: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة مورد</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">اسم المورد</label><input class="form-control" name="name" required></div>
+        <div class="mb-3"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info"></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <button class="btn btn-cyan">حفظ المورد</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة الموردين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>الاسم</th><th>الاتصال</th><th>ملاحظات</th></tr></thead>
+          <tbody>
+            {% for item in items %}
+              <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.contact_info }}</td>
+                <td>{{ item.notes }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" class="text-center text-muted">لا يوجد موردون</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

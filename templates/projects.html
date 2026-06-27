@@ -1,0 +1,65 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">إدارة المشاريع</h2>
+          <p class="text-muted">أضف مشاريع جديدة وتابع حالات العقود ومواعيد التسليم.</p>
+        </div>
+        <a class="btn btn-cyan btn-lg" href="#new-project">مشروع جديد</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5" id="new-project">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة مشروع جديد</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">كود المشروع</label><input class="form-control" name="code" required></div>
+        <div class="mb-3"><label class="form-label">اسم العميل</label><input class="form-control" name="client_name" required></div>
+        <div class="mb-3"><label class="form-label">قيمة العقد</label><input type="number" step="0.01" class="form-control" name="contract_value"></div>
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">تاريخ البداية</label><input type="date" class="form-control" name="start_date"></div>
+          <div class="col-md-6"><label class="form-label">تاريخ النهاية</label><input type="date" class="form-control" name="end_date"></div>
+        </div>
+        <div class="mb-3 mt-3"><label class="form-label">نوع العقد</label>
+          <select class="form-select" name="contract_type">
+            <option value="مقطوعية">مقطوعية</option>
+            <option value="تكلفة + ربح">تكلفة + ربح</option>
+            <option value="وحدة سعر">وحدة سعر</option>
+          </select>
+        </div>
+        <button class="btn btn-cyan mt-2">حفظ المشروع</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة المشاريع</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>كود</th><th>عميل</th><th>قيمة العقد</th><th>البداية</th><th>النهاية</th><th>نوع</th><th>تفاصيل</th></tr></thead>
+          <tbody>
+            {% for item in items %}
+              <tr>
+                <td>{{ item.code }}</td>
+                <td>{{ item.client_name }}</td>
+                <td>{{ item.contract_value }}</td>
+                <td>{{ item.start_date }}</td>
+                <td>{{ item.end_date }}</td>
+                <td>{{ item.contract_type }}</td>
+                <td><a class="btn btn-sm btn-outline-light" href="{{ url_for('project_detail', project_id=item.id) }}">عرض</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="text-center text-muted">لا توجد مشاريع</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

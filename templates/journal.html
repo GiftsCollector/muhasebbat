@@ -1,0 +1,26 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">سجل القيود العامة</h2>
+          <p class="text-muted">عرض القيود المحاسبية المرتبطة بالمشاريع وحالة الحسابات المدينة والدائنة.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">عدد القيود: {{ entries|length }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>المبلغ</th><th>المشروع</th></tr></thead>
+          <tbody>{% for item in entries %}<tr><td>{{ item.date }}</td><td>{{ item.description }}</td><td>{{ item.debit_account.name }}</td><td>{{ item.credit_account.name }}</td><td>{{ item.amount }}</td><td>{{ item.project.code if item.project else '-' }}</td></tr>{% else %}<tr><td colspan="6" class="text-center text-muted">لا توجد قيود</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
