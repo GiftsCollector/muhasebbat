@@ -1,13 +1,10 @@
 from app import app
-import socket
 import os
 
 if __name__ == "__main__":
-    # Get local hostname
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
-    
-    debug_mode = os.getenv('FLASK_ENV') != 'production'
+    port = int(os.getenv("PORT", 5000))
+    debug = os.getenv("FLASK_ENV") != "production"
+    app.run(host="0.0.0.0", port=port, debug=debug)
     
     if debug_mode:
         print(f"\n{'='*60}")
