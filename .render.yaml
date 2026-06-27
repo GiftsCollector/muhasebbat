@@ -1,0 +1,7 @@
+services:
+- type: web
+  name: muhasebbat
+  runtime: python-3.11
+  pythonVersion: 3.11.5
+  buildCommand: pip install -r requirements.txt
+  startCommand: gunicorn run:app
