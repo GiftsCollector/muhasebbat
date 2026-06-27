@@ -7,8 +7,12 @@ from flask import Flask, redirect, render_template, request, url_for, flash
 from models import db, Project, BOQItem, ChartOfAccount, ProgressPayment, ProgressPaymentItem, CostEntry, Subcontractor, Supplier, PurchaseOrder, InventoryTransaction, LaborEntry, Equipment, JournalEntry
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "change-this-secret"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///data.db"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
+
+# Database configuration for both local and production
+db_path = os.path.join(os.path.dirname(__file__), "instance", "data.db")
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
