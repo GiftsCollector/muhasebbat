@@ -1,45 +1,41 @@
 from collections import defaultdict, deque
 from datetime import date
 import os
-import sqlite3
+import sys
 
-from flask import Flask, redirect, render_template, request, url_for, flash
+from flask import Flask, render_template, request, url_for, flash, redirect
 from models import db, Project, BOQItem, ChartOfAccount, ProgressPayment, ProgressPaymentItem, CostEntry, Subcontractor, Supplier, PurchaseOrder, InventoryTransaction, LaborEntry, Equipment, JournalEntry
 
+# Create Flask app
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-secret")
 
-# Database configuration for both local and production
-db_path = os.path.join(os.path.dirname(__file__), "instance", "data.db")
-os.makedirs(os.path.dirname(db_path), exist_ok=True)
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+# Configuration
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key-2024")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+# Database configuration - handles both local SQLite and production
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+else:
+    db_folder = os.path.join(os.path.dirname(__file__), "instance")
+    os.makedirs(db_folder, exist_ok=True)
+    db_path = os.path.join(db_folder, "data.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+
+# Initialize database
 db.init_app(app)
 
+# Create app context and initialize database
+with app.app_context():
+    try:
+        db.create_all()
+        print("✅ Database initialized")
+    except Exception as e:
+        print(f"⚠️  Database init warning: {e}")
 
-def initialize_database():
-    db_path = os.path.join(os.path.dirname(__file__), "instance", "data.db")
-    need_create = not os.path.exists(db_path)
-    if need_create:
-        with app.app_context():
-            db.create_all()
-    else:
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(inventory_transaction)")
-            columns = [row[1] for row in cursor.fetchall()]
-            if "destination_warehouse" not in columns:
-                cursor.execute("ALTER TABLE inventory_transaction ADD COLUMN destination_warehouse TEXT")
-                conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"Database error: {e}")
-            with app.app_context():
-                db.create_all()
-    initialize_database()
 
+# ===== Routes =====
 
 @app.route("/")
 def index():
@@ -201,7 +197,7 @@ def progress_payments():
         credit_account = ChartOfAccount.query.filter(ChartOfAccount.category == "الالتزامات").first()
         if debit_account and credit_account:
             journal = JournalEntry(
-                date=date.today(),
+                date=date.today().isoformat(),
                 description=f"مستخلص تقدم للمشروع {payment.project.code}",
                 debit_account_id=debit_account.id,
                 credit_account_id=credit_account.id,
@@ -276,7 +272,7 @@ def purchase_orders():
         db.session.commit()
 
         # قيد محاسبي تلقائي لأمر الشراء
-        debit_account = ChartOfAccount.query.filter(ChartOfAccount.category.in_(["مواد", "الأصول"])) .first()
+        debit_account = ChartOfAccount.query.filter(ChartOfAccount.category.in_(["مواد", "الأصول"])).first()
         credit_account = ChartOfAccount.query.filter(ChartOfAccount.category == "موردين").first()
         if debit_account and credit_account and order.total_value > 0:
             journal = JournalEntry(
@@ -464,7 +460,7 @@ def project_report():
 def labor():
     projects = Project.query.order_by(Project.code).all()
     if request.method == "POST":
-        labor = LaborEntry(
+        labor_entry = LaborEntry(
             project_id=int(request.form.get("project_id")),
             date=request.form.get("date") or None,
             description=request.form.get("description"),
@@ -473,7 +469,7 @@ def labor():
             advances=float(request.form.get("advances") or 0),
             deductions=float(request.form.get("deductions") or 0),
         )
-        db.session.add(labor)
+        db.session.add(labor_entry)
         db.session.commit()
         flash("تم تسجيل العمالة بنجاح", "success")
         return redirect(url_for("labor"))
@@ -505,7 +501,3 @@ def equipment():
 def journal():
     entries = JournalEntry.query.order_by(JournalEntry.date.desc()).all()
     return render_template("journal.html", entries=entries)
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
