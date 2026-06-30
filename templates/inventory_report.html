@@ -1,0 +1,85 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">تقرير تقييم المخزون</h2>
+      <p class="text-muted">عرض حركة المخزون وتقييمه باستخدام التكلفة المتوسطة وطريقة FIFO.</p>
+    </div>
+  </div>
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      {% if not material_reports %}
+        <div class="alert alert-info mb-3">لا توجد بيانات مخزون كافية للتقرير. سجّل حركات مخزون ثم أعد فتح التقرير.</div>
+      {% endif %}
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-6">
+          <input id="invRepSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في اسم المادة">
+        </div>
+        <div class="col-lg-4">
+          <select id="invRepProject" class="form-select form-select-sm">
+            <option value="">-- الكل --</option>
+            {% for project in projects if project %}
+              <option value="{{ project.code }}">{{ project.code }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-2">
+          <button id="invRepResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table id="invRepTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>المشروع</th><th>المادة</th><th>المستلم</th><th>المسحوب</th><th>الرصيد</th><th>التكلفة المتوسطة</th><th>القيمة المتوسطة</th><th>القيمة FIFO</th></tr></thead>
+          <tbody>
+            {% for report in material_reports %}
+              <tr data-search="{{ report.material_name }}" data-project="{{ report.project.code if report.project else '' }}">
+                <td>{{ report.project.code if report.project else '-' }}</td>
+                <td>{{ report.material_name }}</td>
+                <td>{{ report.receipt_qty }}</td>
+                <td>{{ report.issue_qty }}</td>
+                <td>{{ report.closing_qty }}</td>
+                <td>{{ report.avg_cost }}</td>
+                <td>{{ report.closing_value_avg }}</td>
+                <td>{{ report.closing_value_fifo }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-center text-muted">لا توجد بيانات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('invRepTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('invRepSearch');
+    const projectSelect = document.getElementById('invRepProject');
+    const resetBtn = document.getElementById('invRepResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}

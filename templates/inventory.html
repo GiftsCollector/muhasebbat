@@ -1,0 +1,93 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">إدارة المخازن</h2>
+          <p class="text-muted">سجل الحركات المخزنية، التحويلات، والإضافة مع واجهة مرتبة وواضحة.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي الحركات: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">حركة مخزون جديدة</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">المشروع</label><select class="form-select" name="project_id" required>{% for item in projects %}<option value="{{ item.id }}">{{ item.code }}</option>{% endfor %}</select></div>
+        <div class="mb-3"><label class="form-label">المخزن</label><input class="form-control" name="warehouse_name" required></div>
+        <div class="mb-3"><label class="form-label">المادة</label><input class="form-control" name="material_name" required></div>
+        <div class="row g-3"><div class="col-md-4"><label class="form-label">الكمية</label><input type="number" step="0.01" class="form-control" name="quantity"></div><div class="col-md-4"><label class="form-label">تكلفة الوحدة</label><input type="number" step="0.01" class="form-control" name="unit_cost"></div><div class="col-md-4"><label class="form-label">النوع</label><select class="form-select" name="transaction_type"><option>إضافة</option><option>سحب</option><option>تحويل</option></select></div></div>
+        <div class="mb-3"><label class="form-label">المخزن الوجهة (لتحويل)</label><input class="form-control" name="destination_warehouse"></div>
+        <div class="mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date"></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <button class="btn btn-cyan mt-2">حفظ الحركة</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">سجل حركات المخزون</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-6">
+          <input id="invSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في المادة أو المخزن">
+        </div>
+        <div class="col-lg-3">
+          <select id="invProject" class="form-select form-select-sm">
+            <option value="">-- الكل --</option>
+            {% for project in projects %}
+              <option value="{{ project.code }}">{{ project.code }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button id="invResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا توجد حركات مخزنية بعد. سجّل حركة إضافة أو سحب أو تحويل للبدء.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="invTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>المشروع</th><th>المخزن</th><th>المادة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>النوع</th><th>التاريخ</th></tr></thead>
+          <tbody>{% for item in items %}<tr data-search="{{ item.material_name }} {{ item.warehouse_name }}" data-project="{{ item.project.code }}"><td>{{ item.project.code }}</td><td>{{ item.warehouse_name or '-' }}</td><td>{{ item.material_name or '-' }}</td><td>{{ item.quantity }}</td><td>{{ item.unit_cost }}</td><td>{{ item.transaction_type or '-' }}</td><td>{{ item.date or '-' }}</td></tr>{% else %}<tr><td colspan="7" class="text-center text-muted">لا توجد حركات</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('invTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('invSearch');
+    const projectSelect = document.getElementById('invProject');
+    const resetBtn = document.getElementById('invResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}
