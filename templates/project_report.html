@@ -1,0 +1,104 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">تقرير تكلفة المشروع</h2>
+          <p class="text-muted">ملخص التكلفة لكل مشروع وتفاصيل بندية لتقييم الأداء المالي.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">ملخص التكلفة لكل مشروع</h5>
+      {% if not project_summaries %}
+        <div class="alert alert-info mb-3">لا توجد بيانات مشاريع/تكاليف لعرض الملخص. أضف مشروعًا وقيود تكلفة أولًا.</div>
+      {% endif %}
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-8">
+          <input id="projRepSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في كود المشروع">
+        </div>
+        <div class="col-lg-4">
+          <button id="projRepResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table id="projRepTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>المشروع</th><th>إجمالي التكلفة</th><th>عمالة</th><th>مواد</th><th>معدات</th><th>غير مباشرة</th><th>إشراف</th><th>مصاريف</th></tr></thead>
+          <tbody>
+            {% for summary in project_summaries %}
+              <tr data-search="{{ summary.project.code }}">
+                <td>{{ summary.project.code }}</td>
+                <td>{{ summary.total_cost }}</td>
+                <td>{{ summary.labour_cost }}</td>
+                <td>{{ summary.material_cost }}</td>
+                <td>{{ summary.equipment_cost }}</td>
+                <td>{{ summary.indirect_cost }}</td>
+                <td>{{ summary.supervision_cost }}</td>
+                <td>{{ summary.overhead_cost }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-center text-muted">لا توجد بيانات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">تكلفة البند لكل مشروع</h5>
+      {% if not item_summaries %}
+        <div class="alert alert-info mb-3">لا توجد بنود أعمال مرتبطة بالتكاليف حتى الآن.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>البند</th><th>المشروع</th><th>الكمية</th><th>إجمالي التكلفة</th><th>التكلفة للوحدة</th></tr></thead>
+          <tbody>
+            {% for summary in item_summaries %}
+              <tr>
+                <td>{{ summary.item.name }}</td>
+                <td>{{ summary.item.project.code }}</td>
+                <td>{{ summary.quantity }}</td>
+                <td>{{ summary.total_cost }}</td>
+                <td>{{ summary.cost_per_unit }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted">لا توجد بيانات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('projRepTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('projRepSearch');
+    const resetBtn = document.getElementById('projRepResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const matches = !searchText || rowText.includes(searchText);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}
