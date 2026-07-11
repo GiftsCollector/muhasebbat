@@ -1,0 +1,206 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">محاسبة السواقين (يومية/نقلة)</h2>
+      <p class="text-muted">سجل الاستحقاق والسداد لكل سائق لمعرفة المتبقي المستحق بدقة.</p>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm mb-4">
+      <h5 class="mb-3">تسوية أسبوعية سريعة (سواقين اليومية)</h5>
+      <form method="post" action="{{ url_for('driver_compensation_weekly') }}">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">تاريخ التسوية</label><input type="date" class="form-control" name="date"></div>
+          <div class="col-md-6"><label class="form-label">المشروع</label><select class="form-select" name="project_id"><option value="">-- بدون مشروع --</option>{% for p in projects %}<option value="{{ p.id }}">{{ p.display_name }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-6"><label class="form-label">اسم السائق</label><input class="form-control" name="driver_name" list="driverNames" required></div>
+          <div class="col-md-6"><label class="form-label">عدد أيام الأسبوع</label><input type="number" step="1" min="1" class="form-control" name="week_days" value="6"></div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-6"><label class="form-label">سعر اليومية</label><input type="number" step="0.01" min="0" class="form-control" name="daily_rate" required></div>
+          <div class="col-md-6"><label class="form-label">المسدد</label><input type="number" step="0.01" min="0" class="form-control" name="paid_amount" value="0"></div>
+        </div>
+        <div class="mb-3 mt-3"><label class="form-label">حساب الخزنة (عند السداد)</label><select class="form-select" name="treasury_account_id"><option value="">-- بدون سداد الآن --</option>{% for acc in treasury_accounts %}<option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>{% endfor %}</select></div>
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">مرجع</label><input class="form-control" name="reference"></div>
+          <div class="col-md-6"><label class="form-label">ملاحظات</label><input class="form-control" name="notes" value="تسوية أسبوعية"></div>
+        </div>
+        <button class="btn btn-primary mt-3">حفظ التسوية الأسبوعية</button>
+      </form>
+    </div>
+
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">إضافة حركة سائق</h5>
+      <form method="post" id="driverForm">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date"></div>
+          <div class="col-md-6"><label class="form-label">المشروع</label><select class="form-select" name="project_id"><option value="">-- بدون مشروع --</option>{% for p in projects %}<option value="{{ p.id }}">{{ p.display_name }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-6"><label class="form-label">اسم السائق</label><input class="form-control" name="driver_name" list="driverNames" required></div>
+          <div class="col-md-6"><label class="form-label">طريقة الحساب</label><select class="form-select" name="settlement_basis" id="settlementBasis"><option value="يومية">يومية</option><option value="نقلة">نقلة</option></select></div>
+        </div>
+        <datalist id="driverNames">{% for name in all_driver_names %}<option value="{{ name }}"></option>{% endfor %}</datalist>
+
+        <div class="row g-3 mt-1">
+          <div class="col-md-6"><label class="form-label" id="unitsLabel">عدد الأيام/النقلات</label><input type="number" step="0.01" min="0" class="form-control" name="units" id="unitsInput" value="0"></div>
+          <div class="col-md-6"><label class="form-label" id="rateLabel">سعر اليومية/النقلة</label><input type="number" step="0.01" min="0" class="form-control" name="unit_rate" id="rateInput" value="0"></div>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-md-6"><label class="form-label">الاستحقاق (محسوب)</label><input type="number" step="0.01" class="form-control" id="grossPreview" value="0" readonly></div>
+          <div class="col-md-6"><label class="form-label">المسدد</label><input type="number" step="0.01" min="0" class="form-control" name="paid_amount" value="0"></div>
+        </div>
+
+        <div class="mb-3 mt-3"><label class="form-label">حساب الخزنة (عند السداد)</label><select class="form-select" name="treasury_account_id"><option value="">-- بدون سداد الآن --</option>{% for acc in treasury_accounts %}<option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>{% endfor %}</select></div>
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">مرجع</label><input class="form-control" name="reference"></div>
+          <div class="col-md-6"><label class="form-label">ملاحظات</label><input class="form-control" name="notes"></div>
+        </div>
+
+        <button class="btn btn-cyan mt-3">حفظ الحركة</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm mb-4">
+      <h5 class="mb-3">فلترة الكشف</h5>
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="form-label mb-1">من تاريخ</label><input type="date" class="form-control" name="from_date" value="{{ from_date }}"></div>
+        <div class="col-md-4"><label class="form-label mb-1">إلى تاريخ</label><input type="date" class="form-control" name="to_date" value="{{ to_date }}"></div>
+        <div class="col-md-4"><label class="form-label mb-1">السائق</label><select class="form-select" name="driver_name"><option value="">الكل</option>{% for n in all_driver_names %}<option value="{{ n }}" {% if n == driver_filter %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+        <div class="col-md-6 d-grid"><button class="btn btn-primary btn-sm">تطبيق</button></div>
+        <div class="col-md-6 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('driver_compensation') }}">إعادة</a></div>
+      </form>
+    </div>
+
+    <div class="glass-card p-4 shadow-sm mb-4">
+      <h5 class="mb-3">ملخص مستحقات السواقين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>السائق</th><th>أيام</th><th>نقلات</th><th>الاستحقاق</th><th>المسدد</th><th>المتبقي</th></tr></thead>
+          <tbody>
+            {% for row in summary_rows %}
+            <tr>
+              <td>{{ row.driver_name }}</td>
+              <td>{{ row.daily_units|groupnum }}</td>
+              <td>{{ row.trip_units|groupnum }}</td>
+              <td>{{ row.gross_total|groupnum }}</td>
+              <td>{{ row.paid_total|groupnum }}</td>
+              <td class="{% if row.due_total > 0 %}text-warning{% elif row.due_total < 0 %}text-success{% endif %}">{{ row.due_total|groupnum }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted">لا توجد بيانات.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>الإجمالي</th><th>-</th><th>-</th>
+              <th>{{ totals.gross|groupnum }}</th>
+              <th>{{ totals.paid|groupnum }}</th>
+              <th>{{ totals.due|groupnum }}</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">حركات السواقين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>السائق</th><th>الطريقة</th><th>الوحدات</th><th>السعر</th><th>الاستحقاق</th><th>المسدد</th><th>المتبقي</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in entries %}
+            <tr>
+              <td>{{ item.date or '-' }}</td>
+              <td>{{ item.driver_name }}</td>
+              <td>{{ item.settlement_basis }}</td>
+              <td>{{ item.units|groupnum }}</td>
+              <td>{{ item.unit_rate|groupnum }}</td>
+              <td>{{ item.gross_amount|groupnum }}</td>
+              <td>{{ item.paid_amount|groupnum }}</td>
+              <td>{{ (item.gross_amount - item.paid_amount)|groupnum }}</td>
+              <td><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editDriver{{ item.id }}">تعديل</button></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center text-muted">لا توجد حركات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for item in entries %}
+<div class="modal fade" id="editDriver{{ item.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('update_driver_compensation', entry_id=item.id) }}">
+        <div class="modal-header"><h5 class="modal-title">تعديل حركة سائق</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">المشروع</label><select class="form-select" name="project_id"><option value="">-- بدون مشروع --</option>{% for p in projects %}<option value="{{ p.id }}" {% if item.project_id == p.id %}selected{% endif %}>{{ p.display_name }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><label class="form-label">اسم السائق</label><input class="form-control" name="driver_name" value="{{ item.driver_name }}"></div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4"><label class="form-label">طريقة الحساب</label><select class="form-select" name="settlement_basis"><option value="يومية" {% if item.settlement_basis == 'يومية' %}selected{% endif %}>يومية</option><option value="نقلة" {% if item.settlement_basis == 'نقلة' %}selected{% endif %}>نقلة</option></select></div>
+            <div class="col-md-4"><label class="form-label">الوحدات</label><input type="number" step="0.01" min="0" class="form-control" name="units" value="{{ item.units }}"></div>
+            <div class="col-md-4"><label class="form-label">سعر الوحدة</label><input type="number" step="0.01" min="0" class="form-control" name="unit_rate" value="{{ item.unit_rate }}"></div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4"><label class="form-label">المسدد</label><input type="number" step="0.01" min="0" class="form-control" name="paid_amount" value="{{ item.paid_amount }}"></div>
+            <div class="col-md-4"><label class="form-label">الخزنة</label><select class="form-select" name="treasury_account_id"><option value="">-- بدون سداد --</option>{% for acc in treasury_accounts %}<option value="{{ acc.id }}" {% if item.treasury_account_id == acc.id %}selected{% endif %}>{{ acc.code }} - {{ acc.name }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><label class="form-label">مرجع</label><input class="form-control" name="reference" value="{{ item.reference or '' }}"></div>
+          </div>
+          <div class="mb-3 mt-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes">{{ item.notes or '' }}</textarea></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button class="btn btn-cyan">حفظ التعديل</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+  (function () {
+    const basis = document.getElementById('settlementBasis');
+    const unitsLabel = document.getElementById('unitsLabel');
+    const rateLabel = document.getElementById('rateLabel');
+    const unitsInput = document.getElementById('unitsInput');
+    const rateInput = document.getElementById('rateInput');
+    const grossPreview = document.getElementById('grossPreview');
+
+    function updateBasisLabels() {
+      if (!basis) return;
+      if (basis.value === 'نقلة') {
+        unitsLabel.textContent = 'عدد النقلات';
+        rateLabel.textContent = 'سعر النقلة';
+      } else {
+        unitsLabel.textContent = 'عدد الأيام';
+        rateLabel.textContent = 'سعر اليومية';
+      }
+    }
+
+    function updateGross() {
+      const units = parseFloat(unitsInput.value || '0');
+      const rate = parseFloat(rateInput.value || '0');
+      grossPreview.value = Math.max(units * rate, 0).toFixed(2);
+    }
+
+    if (basis) basis.addEventListener('change', updateBasisLabels);
+    if (basis) basis.addEventListener('change', updateGross);
+    if (unitsInput) unitsInput.addEventListener('input', updateGross);
+    if (rateInput) rateInput.addEventListener('input', updateGross);
+    updateBasisLabels();
+    updateGross();
+  })();
+</script>
+{% endblock %}

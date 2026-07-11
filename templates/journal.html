@@ -1,0 +1,175 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-3">
+        <div>
+          <h2 class="section-title mb-1">القيود اليومية</h2>
+          <p class="text-muted mb-0">إنشاء قيد يومي برأس قيد وبنود متعددة.</p>
+        </div>
+        <span class="badge bg-info text-dark py-2 px-3">رصيد الخزنة الحالي: {{ treasury_balance|groupnum }}</span>
+      </div>
+
+      <form method="post" action="{{ url_for('journal') }}" id="journalEntryForm">
+        <input type="hidden" name="entry_action" value="post">
+
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">رقم القيد / السريال</label>
+            <input class="form-control" value="JRN-{{ '%06d'|format(next_journal_serial) }}" readonly>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">رقم المرجع (اختياري)</label>
+            <input class="form-control" name="reference" placeholder="مرجع القيد">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">التاريخ</label>
+            <input type="date" class="form-control" name="date" value="{{ today_date }}" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">البيان</label>
+            <input class="form-control" name="description" placeholder="بيان القيد" required>
+          </div>
+        </div>
+
+        <div class="table-responsive mt-4">
+          <table class="table table-borderless align-middle mb-0" id="journalLinesTable">
+            <thead>
+              <tr>
+                <th>الحساب المدين</th>
+                <th>الحساب الدائن</th>
+                <th>مركز التكلفة</th>
+                <th>المبلغ</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="journalLinesBody">
+              <tr class="journal-line-row">
+                <td>
+                  <select class="form-select" name="line_debit_account_id" required>
+                    <option value="">اختر حسابا</option>
+                    {% for account in accounts %}
+                      <option value="{{ account.id }}">{{ account.code }} - {{ account.name }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <select class="form-select" name="line_credit_account_id" required>
+                    <option value="">اختر حسابا</option>
+                    {% for account in accounts %}
+                      <option value="{{ account.id }}">{{ account.code }} - {{ account.name }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <select class="form-select" name="line_cost_center">
+                    <option value="">بدون مركز تكلفة</option>
+                    {% for center in cost_centers %}
+                      <option value="{{ center }}">{{ center }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <input type="number" step="0.01" min="0" class="form-control" name="line_amount" value="0" required>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-danger btn-sm remove-line">حذف</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button type="button" class="btn btn-outline-light" id="addJournalLine">إضافة بند</button>
+          <button type="submit" name="entry_action" value="draft" class="btn btn-outline-light">حفظ كمسودة</button>
+          <button type="submit" name="entry_action" value="post" class="btn btn-primary">ترحيل القيد</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">سجل القيود</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>رقم القيد</th>
+              <th>المرجع</th>
+              <th>التاريخ</th>
+              <th>البيان</th>
+              <th>مدين</th>
+              <th>دائن</th>
+              <th>مركز التكلفة</th>
+              <th>المبلغ</th>
+              <th>الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in entries %}
+              <tr>
+                <td>JRN-{{ '%06d'|format(item.id) }}</td>
+                <td>{{ item.reference or '-' }}</td>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ item.description or '-' }}</td>
+                <td>{{ item.debit_account.name if item.debit_account else '-' }}</td>
+                <td>{{ item.credit_account.name if item.credit_account else '-' }}</td>
+                <td>{{ item.cost_center or '-' }}</td>
+                <td>{{ item.amount|groupnum }}</td>
+                <td>
+                  {% if item.status == 'مرحل' %}
+                    <span class="badge bg-success">مرحل</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">مسودة</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا توجد قيود بعد.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const addBtn = document.getElementById('addJournalLine');
+    const linesBody = document.getElementById('journalLinesBody');
+
+    function bindRemoveButtons() {
+      document.querySelectorAll('.remove-line').forEach(function (btn) {
+        btn.onclick = function () {
+          const rows = linesBody ? linesBody.querySelectorAll('.journal-line-row') : [];
+          if (rows.length > 1) {
+            btn.closest('tr').remove();
+          }
+        };
+      });
+    }
+
+    if (addBtn && linesBody) {
+      addBtn.addEventListener('click', function () {
+        const template = linesBody.querySelector('.journal-line-row');
+        if (!template) return;
+        const clone = template.cloneNode(true);
+        clone.querySelectorAll('select').forEach(function (select) {
+          select.selectedIndex = 0;
+        });
+        clone.querySelectorAll('input').forEach(function (input) {
+          input.value = input.name === 'line_amount' ? '0' : '';
+        });
+        linesBody.appendChild(clone);
+        bindRemoveButtons();
+      });
+    }
+
+    bindRemoveButtons();
+  })();
+</script>
+{% endblock %}

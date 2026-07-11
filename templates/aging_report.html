@@ -1,0 +1,44 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">تقرير أعمار المديونية (الموردين والعملاء)</h2>
+      <p class="text-muted">تصنيف الأرصدة إلى: حالي، 30 يوم، 60 يوم، 90+ يوم.</p>
+      <form method="get" class="row g-2 mt-2 align-items-end">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">تطبيق</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('aging_report') }}">إعادة</a></div>
+      </form>
+    </div>
+  </div>
+
+  {% for category, rows in grouped_rows.items() %}
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">{{ category }}</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>الحساب</th><th>حالي</th><th>30 يوم</th><th>60 يوم</th><th>90+ يوم</th><th>الإجمالي</th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.account.code }} - {{ row.account.name }}</td>
+                <td>{{ row.current|groupnum }}</td>
+                <td>{{ row['30']|groupnum }}</td>
+                <td>{{ row['60']|groupnum }}</td>
+                <td>{{ row['90']|groupnum }}</td>
+                <td>{{ row.total|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="text-muted">لا توجد بيانات.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">حركة الخزنة الرئيسية والخزن الفرعية</h2>
+      <p class="text-muted">متابعة ديناميكية للخزنة الرئيسية، خزنة الموقع، والعهد.</p>
+      <form method="get" class="row g-2 mt-2 align-items-end">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">تطبيق</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('treasury_dynamics_report') }}">إعادة</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي المقبوضات</div><div class="h5 mb-0">{{ total_inflow|groupnum }}</div></div></div>
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي المدفوعات</div><div class="h5 mb-0">{{ total_outflow|groupnum }}</div></div></div>
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">صافي الحركة النقدية</div><div class="h5 mb-0">{{ net_cash_flow|groupnum }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">رصيد الخزنة الرئيسية (المجمع)</div><div class="h5 mb-0">{{ main_rollup_balance|groupnum }}</div></div></div>
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">رصيد الخزنة الرئيسية المباشر</div><div class="h5 mb-0">{{ main_own_balance|groupnum }}</div></div></div>
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي أرصدة الخزن الفرعية</div><div class="h5 mb-0">{{ sub_total_balance|groupnum }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="glass-card p-4 shadow-sm h-100">
+      <h5 class="mb-3">أرصدة الخزن</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>الحساب</th><th>الرصيد</th></tr></thead>
+          <tbody>
+            {% for row in treasury_rows %}
+              <tr>
+                <td>{% if row.is_rollup %}<span class="badge bg-info-subtle text-info-emphasis">مجمع</span> {% endif %}{{ row.account.code }} - {{ row.account.name }}</td>
+                <td>{{ row.balance|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="2" class="text-muted">لا توجد حسابات خزنة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="glass-card p-4 shadow-sm h-100">
+      <h5 class="mb-3">تفاصيل الحركات النقدية</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>المرجع</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>مقبوض</th><th>مدفوع</th><th>المشروع</th></tr></thead>
+          <tbody>
+            {% for line in movements %}
+              <tr>
+                <td>{{ line.date or '-' }}</td><td>{{ line.reference }}</td><td>{{ line.description }}</td><td>{{ line.debit_account }}</td><td>{{ line.credit_account }}</td><td>{{ line.inflow|groupnum }}</td><td>{{ line.outflow|groupnum }}</td><td>{{ line.project }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-muted">لا توجد حركات ضمن الفترة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends 'layout.html' %}
+{% block content %}
+<style>
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    .print-area {
+      box-shadow: none !important;
+      border: 1px solid #ddd !important;
+      background: #fff !important;
+      color: #000 !important;
+    }
+  }
+</style>
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm print-area">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 no-print">
+        <div>
+          <h2 class="section-title">تفاصيل القيد رقم {{ entry.id }}</h2>
+          <p class="text-muted">مراجعة القيد المحاسبي قبل النسخ أو العكس.</p>
+          <span class="badge bg-dark">الرقم: JRN-{{ '%06d'|format(entry.id) }}</span>
+          {% if entry.status == 'مرحل' %}
+            <span class="badge bg-success">مرحل</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">مسودة</span>
+          {% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()">طباعة هذا القيد</button>
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('journal') }}">العودة إلى سجل القيود</a>
+        </div>
+      </div>
+
+      <div class="d-none d-print-block mb-3">
+        <h4>قيد يومية</h4>
+        <div>المرجع: JRN-{{ '%06d'|format(entry.id) }}</div>
+      </div>
+
+      <div class="row g-3 mt-2">
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">التاريخ</div>
+            <div class="fw-bold">{{ entry.date }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">المرجع</div>
+            <div class="fw-bold">{{ entry.reference or '-' }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">اليومية</div>
+            <div class="fw-bold">{{ entry.journal_name or 'يومية عامة' }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">المبلغ</div>
+            <div class="fw-bold">{{ entry.amount|groupnum }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">الفرع</div>
+            <div class="fw-bold">{{ entry.branch or '-' }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">حركة المخزون</div>
+            <div class="fw-bold">{{ entry.stock_move or '-' }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">المشروع</div>
+            <div class="fw-bold">{{ entry.project.display_name if entry.project else '-' }}</div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">الحساب المدين</div>
+            <div class="fw-bold">{{ entry.debit_account.name }}</div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card p-3 h-100">
+            <div class="text-muted small">الحساب الدائن</div>
+            <div class="fw-bold">{{ entry.credit_account.name }}</div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="card p-3">
+            <div class="text-muted small">الوصف</div>
+            <div class="fw-bold">{{ entry.description }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 mt-3 no-print">
+        {% if entry.status != 'مرحل' %}
+          <form method="post" action="{{ url_for('post_journal_entry', entry_id=entry.id) }}" class="m-0">
+            <button type="submit" class="btn btn-success btn-sm">ترحيل القيد</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('unpost_journal_entry', entry_id=entry.id) }}" class="m-0">
+            <button type="submit" class="btn btn-warning btn-sm">إلغاء الترحيل</button>
+          </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('copy_journal_entry', entry_id=entry.id) }}" class="m-0">
+          <button type="submit" class="btn btn-cyan btn-sm">نسخ القيد</button>
+        </form>
+        <form method="post" action="{{ url_for('reverse_journal_entry', entry_id=entry.id) }}" class="m-0" onsubmit="return confirm('هل تريد إنشاء قيد عكسي لهذا القيد؟');">
+          <button type="submit" class="btn btn-outline-light btn-sm">عكس القيد</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_journal_entry', entry_id=entry.id) }}" class="m-0" onsubmit="return confirm('هل تريد حذف هذا القيد نهائيًا؟');">
+          <button type="submit" class="btn btn-danger btn-sm">حذف القيد</button>
+        </form>
+      </div>
+
+      <div class="mt-4 pt-3 border-top no-print">
+        <h5 class="mb-3">تعديل القيد</h5>
+        <form method="post" action="{{ url_for('update_journal_entry', entry_id=entry.id) }}" class="row g-2 align-items-end">
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">المرجع</label>
+            <input type="text" name="reference" class="form-control" value="{{ entry.reference or '' }}">
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">التاريخ</label>
+            <input type="date" name="date" class="form-control" value="{{ entry.date }}" required>
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">اليومية</label>
+            <select name="journal_name" class="form-select">
+              {% for journal_name in journal_options %}
+                <option value="{{ journal_name }}" {% if entry.journal_name == journal_name %}selected{% endif %}>{{ journal_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">الفرع</label>
+            <input type="text" name="branch" class="form-control" value="{{ entry.branch or '' }}">
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">حركة المخزون</label>
+            <input type="text" name="stock_move" class="form-control" value="{{ entry.stock_move or '' }}">
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">الحالة</label>
+            <select name="status" class="form-select">
+              <option value="مسودة" {% if entry.status != 'مرحل' %}selected{% endif %}>مسودة</option>
+              <option value="مرحل" {% if entry.status == 'مرحل' %}selected{% endif %}>مرحل</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1">الوصف</label>
+            <input type="text" name="description" class="form-control" value="{{ entry.description }}" required>
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">الحساب المدين</label>
+            <select name="debit_account_id" class="form-select" required>
+              {% for account in accounts %}
+                <option value="{{ account.id }}" {% if account.id == entry.debit_account_id %}selected{% endif %}>{{ account.code }} - {{ account.name }} ({{ account.category }}) | رصيد: {{ account_balances.get(account.id, 0)|groupnum }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label mb-1">الحساب الدائن</label>
+            <select name="credit_account_id" class="form-select" required>
+              {% for account in accounts %}
+                <option value="{{ account.id }}" {% if account.id == entry.credit_account_id %}selected{% endif %}>{{ account.code }} - {{ account.name }} ({{ account.category }}) | رصيد: {{ account_balances.get(account.id, 0)|groupnum }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-1">
+            <label class="form-label mb-1">المبلغ</label>
+            <input type="number" step="0.01" min="0" name="amount" class="form-control" value="{{ entry.amount }}" required>
+          </div>
+          <div class="col-6 col-md-1">
+            <label class="form-label mb-1">المشروع</label>
+            <select name="project_id" class="form-select">
+              <option value="">-</option>
+              {% for project in projects %}
+                <option value="{{ project.id }}" {% if entry.project_id == project.id %}selected{% endif %}>{{ project.display_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 d-grid d-md-block">
+            <button type="reset" class="btn btn-outline-light btn-sm">تفريغ</button>
+            <button type="submit" class="btn btn-primary btn-sm">حفظ التعديل</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

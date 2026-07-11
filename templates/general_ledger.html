@@ -1,0 +1,69 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">دفتر الأستاذ العام</h2>
+          <p class="text-muted">عرض حركة كل حساب بالتفصيل مع الأرصدة الافتتاحية والختامية.</p>
+        </div>
+        <a class="btn btn-outline-light btn-sm" href="{{ url_for('index') }}">العودة للوحة</a>
+      </div>
+      <form method="get" class="row g-2 mt-2 align-items-end">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">تطبيق</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('general_ledger_report') }}">إعادة تعيين</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    {% if not ledger_accounts %}
+      <div class="glass-card p-4 shadow-sm"><div class="alert alert-info mb-0">لا توجد حركات في الفترة المحددة.</div></div>
+    {% else %}
+      {% for block in ledger_accounts %}
+      <div class="glass-card p-4 shadow-sm mb-3">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <h5 class="mb-1">{{ block.account.code }} - {{ block.account.name }}</h5>
+            <div class="small text-muted">الفئة: {{ block.account.category }}</div>
+          </div>
+          <div class="small">
+            <span class="badge bg-secondary">افتتاحي: {{ block.opening_balance|groupnum }}</span>
+            <span class="badge bg-secondary">مدين: {{ block.debit_total|groupnum }}</span>
+            <span class="badge bg-secondary">دائن: {{ block.credit_total|groupnum }}</span>
+            <span class="badge bg-info text-dark">ختامي: {{ block.closing_balance|groupnum }}</span>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-borderless table-hover align-middle mb-0">
+            <thead><tr><th>التاريخ</th><th>المرجع</th><th>الوصف</th><th>المشروع</th><th>الحالة</th><th>مدين</th><th>دائن</th></tr></thead>
+            <tbody>
+              {% for line in block.movements %}
+                <tr>
+                  <td>{{ line.date or '-' }}</td>
+                  <td>{{ line.reference }}</td>
+                  <td>{{ line.description }}</td>
+                  <td>{{ line.project }}</td>
+                  <td>
+                    {% if line.status == 'مرحل' %}
+                      <span class="badge bg-success">مرحل</span>
+                    {% else %}
+                      <span class="badge bg-warning text-dark">مسودة</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ line.debit|groupnum }}</td>
+                  <td>{{ line.credit|groupnum }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

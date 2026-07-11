@@ -1,0 +1,56 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">ميزان المراجعة</h2>
+          <p class="text-muted">ملخص أرصدة الحسابات للتحقق من توازن الطرفين.</p>
+        </div>
+        <a class="btn btn-outline-light btn-sm" href="{{ url_for('index') }}">العودة للوحة</a>
+      </div>
+      <form method="get" class="row g-2 mt-2 align-items-end">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">تطبيق</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('trial_balance_report') }}">إعادة تعيين</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      {% if not rows %}
+        <div class="alert alert-info mb-0">لا توجد بيانات لعرض ميزان المراجعة في هذه الفترة.</div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-borderless table-hover align-middle">
+            <thead><tr><th>الحساب</th><th>الفئة</th><th>رصيد افتتاحي</th><th>مدين الفترة</th><th>دائن الفترة</th><th>رصيد مدين</th><th>رصيد دائن</th></tr></thead>
+            <tbody>
+              {% for row in rows %}
+              <tr>
+                <td>{{ row.account.code }} - {{ row.account.name }}</td>
+                <td>{{ row.account.category }}</td>
+                <td>{{ row.opening_balance|groupnum }}</td>
+                <td>{{ row.period_debit|groupnum }}</td>
+                <td>{{ row.period_credit|groupnum }}</td>
+                <td>{{ row.debit_balance|groupnum }}</td>
+                <td>{{ row.credit_balance|groupnum }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="5" class="text-end">الإجمالي</th>
+                <th>{{ total_debit_balance|groupnum }}</th>
+                <th>{{ total_credit_balance|groupnum }}</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

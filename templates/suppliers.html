@@ -1,0 +1,113 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">الموردون</h2>
+          <p class="text-muted">أضف الموردين وتمتع بواجهة عمل منظمة لتتبع بيانات الاتصال والملاحظات.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي الموردين: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة مورد</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">اسم المورد</label><input class="form-control" name="name" required></div>
+        <div class="mb-3"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info"></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <button class="btn btn-cyan">حفظ المورد</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة الموردين</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-8">
+          <input id="suppSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في اسم المورد أو الاتصال">
+        </div>
+        <div class="col-lg-4">
+          <button id="suppResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا يوجد موردون حتى الآن. أضف موردًا جديدًا قبل تسجيل أوامر الشراء.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="suppTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>الاسم</th><th>الاتصال</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in items %}
+              <tr data-search="{{ item.name }} {{ item.contact_info }}">
+                <td>{{ item.name }}</td>
+                <td>{{ item.contact_info or '-' }}</td>
+                <td>{{ item.notes or '-' }}</td>
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    <a class="btn btn-sm btn-cyan" href="{{ url_for('supplier_statement', supplier_id=item.id) }}">كشف حساب</a>
+                    <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editSupplier{{ item.id }}">تعديل</button>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="text-center text-muted">لا يوجد موردون</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in items %}
+        <div class="modal fade" id="editSupplier{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_supplier', supplier_id=item.id) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل المورد {{ item.name }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3"><label class="form-label">اسم المورد</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                  <div class="mb-3"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info" value="{{ item.contact_info or '' }}"></div>
+                  <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes">{{ item.notes or '' }}</textarea></div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('suppTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('suppSearch');
+    const resetBtn = document.getElementById('suppResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const matches = !searchText || rowText.includes(searchText);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,272 @@
+{% extends 'layout.html' %}
+{% block content %}
+<style>
+  .dashboard-page .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(110px, 1fr));
+    gap: 10px;
+  }
+
+  .dashboard-page .quick-card {
+    border: 1px solid #dee7f3;
+    border-radius: 12px;
+    background: #fff;
+    min-height: 82px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    color: #18345f;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .dashboard-page .quick-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(24, 52, 95, 0.08);
+  }
+
+  .dashboard-page .quick-card i {
+    font-size: 1.2rem;
+    color: #1e73e8;
+    margin-bottom: 6px;
+  }
+
+  .dashboard-page .quick-card span {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .dashboard-page .metric-card {
+    border: 1px solid #e1e9f4;
+    border-radius: 12px;
+    padding: 12px;
+    background: #fff;
+  }
+
+  .dashboard-page .metric-title {
+    color: #5f718f;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .dashboard-page .metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #1e2f4d;
+  }
+
+  .dashboard-page .metric-sub {
+    color: #7b8da9;
+    font-size: 0.8rem;
+    margin-top: 7px;
+  }
+
+  .dashboard-page .panel-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1f3558;
+    margin-bottom: 10px;
+  }
+
+  .dashboard-page .rank-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .dashboard-page .rank-list li {
+    border-bottom: 1px solid #edf2f8;
+    padding: 9px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.9rem;
+  }
+
+  .dashboard-page .rank-list li:last-child {
+    border-bottom: 0;
+  }
+
+  .dashboard-page .ring-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 220px;
+  }
+
+  .dashboard-page .ring {
+    width: 170px;
+    height: 170px;
+    border-radius: 50%;
+    background: conic-gradient(
+      #1e73e8 0deg,
+      #1e73e8 calc({{ (orders_sales_ratio * 360)|round(0, 'floor') }}deg),
+      #b8d5ff calc({{ (orders_sales_ratio * 360)|round(0, 'floor') }}deg),
+      #b8d5ff 360deg
+    );
+    position: relative;
+  }
+
+  .dashboard-page .ring::after {
+    content: "";
+    position: absolute;
+    inset: 22px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px #e4ecf7;
+  }
+
+  .dashboard-page .ring-label {
+    position: absolute;
+    text-align: center;
+    font-weight: 700;
+    color: #24406f;
+  }
+
+  .dashboard-page .ring-legend {
+    font-size: 0.88rem;
+    color: #5f718f;
+    margin-top: 10px;
+  }
+
+  .dashboard-page .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 6px;
+  }
+
+  @media (max-width: 1200px) {
+    .dashboard-page .quick-grid {
+      grid-template-columns: repeat(5, minmax(110px, 1fr));
+    }
+  }
+
+  @media (max-width: 768px) {
+    .dashboard-page .quick-grid {
+      grid-template-columns: repeat(2, minmax(110px, 1fr));
+    }
+
+    .dashboard-page .metric-value {
+      font-size: 1.45rem;
+    }
+  }
+</style>
+
+<div class="dashboard-page row g-3 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-3">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="section-title mb-0">اختصاراتي</h2>
+        <a href="{{ url_for('journal') }}" class="btn btn-primary btn-sm">تسجيل قيد</a>
+      </div>
+      <div class="quick-grid">
+        <a class="quick-card" href="{{ url_for('progress_payments') }}"><i class="bi bi-file-earmark-text"></i><span>المستخلصات</span></a>
+        <a class="quick-card" href="{{ url_for('journal') }}"><i class="bi bi-cash-stack"></i><span>سند قبض/صرف</span></a>
+        <a class="quick-card" href="{{ url_for('purchase_orders') }}"><i class="bi bi-bag-check"></i><span>أمر شراء</span></a>
+        <a class="quick-card" href="{{ url_for('inventory') }}"><i class="bi bi-box-seam"></i><span>حركة المخزون</span></a>
+        <a class="quick-card" href="{{ url_for('journal') }}"><i class="bi bi-journal-plus"></i><span>قيد يومية</span></a>
+        <a class="quick-card" href="{{ url_for('custody_settlements') }}"><i class="bi bi-cash-coin"></i><span>تسوية العهد</span></a>
+        <a class="quick-card" href="{{ url_for('profit_loss_report') }}"><i class="bi bi-graph-up"></i><span>تحليل المبيعات</span></a>
+        <a class="quick-card" href="{{ url_for('general_ledger_report') }}"><i class="bi bi-folder2-open"></i><span>دفتر الأستاذ</span></a>
+        <a class="quick-card" href="{{ url_for('subcontractors') }}"><i class="bi bi-people"></i><span>مقاولو الباطن</span></a>
+        <a class="quick-card" href="{{ url_for('accounts') }}"><i class="bi bi-gear"></i><span>دليل الحسابات</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-2">
+      <div class="col-lg-2 col-md-4 col-6">
+        <div class="metric-card">
+          <div class="metric-title">مبيعات اليوم</div>
+          <div class="metric-value">{{ total_journal_value|groupnum }}</div>
+          <div class="metric-sub">إجمالي القيود الحالية</div>
+        </div>
+      </div>
+      <div class="col-lg-2 col-md-4 col-6">
+        <div class="metric-card">
+          <div class="metric-title">تحصيلات اليوم</div>
+          <div class="metric-value">{{ orders_sales_total|groupnum }}</div>
+          <div class="metric-sub">إجمالي المستخلصات</div>
+        </div>
+      </div>
+      <div class="col-lg-2 col-md-4 col-6">
+        <div class="metric-card">
+          <div class="metric-title">فواتير الفترة</div>
+          <div class="metric-value">{{ journal_entries }}</div>
+          <div class="metric-sub">عدد القيود المحاسبية</div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6 col-6">
+        <div class="metric-card">
+          <div class="metric-title">مديونية العملاء</div>
+          <div class="metric-value">{{ top_customer_dues|length }}</div>
+          <div class="metric-sub">عملاء عليهم مديونية</div>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6 col-12">
+        <div class="metric-card">
+          <div class="metric-title">دائنات وأنشطة منتهية</div>
+          <div class="metric-value">{{ paid_purchase_orders }}</div>
+          <div class="metric-sub">عدد أوامر شراء مدفوعة</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="glass-card p-3 h-100">
+      <div class="panel-title">أعلى مديونية الموردين</div>
+      <ul class="rank-list">
+        {% for row in top_supplier_dues %}
+          <li>
+            <span>{{ row.name }}</span>
+            <strong>{{ row.amount|groupnum }}</strong>
+          </li>
+        {% else %}
+          <li><span class="text-muted">لا توجد بيانات حالية</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="glass-card p-3 h-100">
+      <div class="panel-title">أعلى مديونية العملاء</div>
+      <ul class="rank-list">
+        {% for row in top_customer_dues %}
+          <li>
+            <span>{{ row.name }}</span>
+            <strong>{{ row.amount|groupnum }}</strong>
+          </li>
+        {% else %}
+          <li><span class="text-muted">لا توجد بيانات حالية</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="glass-card p-3 h-100">
+      <div class="panel-title">مصادر المبيعات</div>
+      <div class="ring-wrap position-relative">
+        <div class="ring"></div>
+        <div class="ring-label">
+          {{ (orders_sales_ratio * 100)|round(0, 'floor') }}%
+          <div class="small text-muted">مستخلصات</div>
+        </div>
+      </div>
+      <div class="ring-legend">
+        <div><span class="dot" style="background:#1e73e8"></span> مبيعات من الطلبات: {{ orders_sales_total|groupnum }}</div>
+        <div><span class="dot" style="background:#b8d5ff"></span> مبيعات مباشرة: {{ direct_sales_total|groupnum }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

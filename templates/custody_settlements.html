@@ -1,0 +1,398 @@
+{% extends 'layout.html' %}
+{% block content %}
+{% set export_url = url_for('export_custody_settlements', search_name=selected_entity_name, operation_type=operation_filter, from_date=from_date, to_date=to_date) %}
+<div class="row gy-4 fade-up custody-page">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-xl-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title mb-2">العهد</h2>
+          <p class="text-muted mb-0">ابحث عن صاحب العهدة من كل الحسابات الممكن إنشاء عهد عليها، ثم راجع كشف الحساب وصدّرها على Excel.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#disburseModal">إدخال صرف عهدة</button>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="modal" data-bs-target="#returnModal">رد باقي العهد</button>
+          <a class="btn btn-outline-light" href="{{ export_url }}">تصدير Excel</a>
+        </div>
+      </div>
+
+      <form method="get" class="row g-2 mt-3 align-items-end">
+        <div class="col-lg-4">
+          <label class="form-label mb-1">بحث عن صاحب العهد</label>
+          <input list="entityNamesList" name="search_name" value="{{ selected_entity_name }}" class="form-control" placeholder="اسم الحساب أو صاحب العهد">
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label mb-1">نوع العملية</label>
+          <select class="form-select" name="operation_type">
+            <option value="">كل العمليات</option>
+            <option value="صرف عهدة" {% if operation_filter == 'صرف عهدة' %}selected{% endif %}>صرف عهدة</option>
+            <option value="تسوية عهدة" {% if operation_filter == 'تسوية عهدة' %}selected{% endif %}>تسوية عهدة</option>
+            <option value="رد باقي عهدة" {% if operation_filter == 'رد باقي عهدة' %}selected{% endif %}>رد باقي عهدة</option>
+          </select>
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label mb-1">من تاريخ</label>
+          <input type="date" class="form-control" name="from_date" value="{{ from_date }}">
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label mb-1">إلى تاريخ</label>
+          <input type="date" class="form-control" name="to_date" value="{{ to_date }}">
+        </div>
+        <div class="col-lg-1 d-grid">
+          <button class="btn btn-cyan">بحث</button>
+        </div>
+      </form>
+      <datalist id="entityNamesList">
+        {% for name in all_entity_names %}
+          <option value="{{ name }}"></option>
+        {% endfor %}
+      </datalist>
+    </div>
+  </div>
+
+  <div class="col-xl-3 order-xl-2">
+    <div class="glass-card p-3 shadow-sm h-100">
+      <h5 class="mb-3">الحسابات الممكن صرف عهد عليها</h5>
+      <div class="owner-list">
+        {% for owner in owner_summaries %}
+          <a class="owner-item {% if owner.entity_name == selected_entity_name %}active{% endif %}" href="{{ url_for('custody_settlements', search_name=owner.entity_name, operation_type=operation_filter, from_date=from_date, to_date=to_date) }}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div>
+                <div class="fw-semibold">{{ owner.entity_name }}</div>
+                <div class="small text-muted">{{ owner.entity_type }} · {{ owner.count }} حركة</div>
+              </div>
+              <div class="text-end">
+                <div class="fw-bold">{{ owner.balance|groupnum }}</div>
+                <div class="small text-muted">الرصيد</div>
+              </div>
+            </div>
+          </a>
+        {% else %}
+          <div class="text-muted">لا توجد حسابات عهد حتى الآن.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-9 order-xl-1">
+    <div class="glass-card p-4 shadow-sm mb-4">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
+        <div>
+          <h5 class="mb-1">كشف حساب العهدة</h5>
+          <div class="text-muted">{% if selected_entity_name %}{{ selected_entity_name }}{% else %}اختر حسابًا لعرض الكشف{% endif %}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <span class="badge bg-secondary">عدد العمليات: {{ selected_totals.count or 0 }}</span>
+          <span class="badge bg-primary">إجمالي الصرف: {{ selected_totals.spent|groupnum }}</span>
+          <span class="badge bg-warning text-dark">إجمالي الرد: {{ selected_totals.returned|groupnum }}</span>
+          <span class="badge bg-info text-dark">الرصيد الحالي: {{ selected_totals.balance|groupnum }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass-card p-4 shadow-sm mb-4">
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>رقم العملية</th>
+              <th>المرجع</th>
+              <th>التاريخ</th>
+              <th>اسم صاحب العهدة</th>
+              <th>المدين</th>
+              <th>الدائن</th>
+              <th>الرصيد</th>
+              <th>ملاحظات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in selected_rows %}
+              {% set item = row.item %}
+              <tr>
+                <td>CUS-{{ '%06d'|format(item.id) }}</td>
+                <td>{{ item.reference or '-' }}</td>
+                <td>{{ item.date or '-' }}</td>
+                <td>
+                  <div class="d-flex flex-column">
+                    <span class="fw-semibold">{{ item.entity_name or '-' }}</span>
+                    <span class="small text-muted">{{ row.operation_type }}</span>
+                  </div>
+                </td>
+                <td>{{ row.debit|groupnum }}</td>
+                <td>{{ row.credit|groupnum }}</td>
+                <td>{{ row.running_balance|groupnum }}</td>
+                <td>{{ item.notes or '-' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-center text-muted">لا توجد عمليات مطابقة للبحث الحالي.</td></tr>
+            {% endfor %}
+            <tr class="table-light">
+              <td colspan="6" class="fw-semibold text-end">إجمالي الرصيد الفعلي للحساب بعد كل الحركات المالية</td>
+              <td class="fw-bold">{{ selected_totals.balance|groupnum }}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h5 class="mb-1">تسوية عهدة</h5>
+          <p class="text-muted mb-0">أضف بنود التسوية ثم احفظ العملية كقيد يومي تلقائي.</p>
+        </div>
+        <div class="small text-muted">الاختيار الحالي: {{ selected_entity_name or 'غير محدد' }}</div>
+      </div>
+
+      <form method="post" id="custodySettlementForm">
+        <input type="hidden" name="operation_type" value="تسوية عهدة">
+        <div class="row g-3">
+          <div class="col-lg-3">
+            <label class="form-label">التاريخ</label>
+            <input type="date" class="form-control" name="date" value="{{ selected_rows[-1].item.date if selected_rows else '' }}">
+          </div>
+          <div class="col-lg-3">
+            <label class="form-label">المشروع</label>
+            <select class="form-select" name="project_id">
+              <option value="">-- بدون مشروع --</option>
+              {% for p in projects %}
+                <option value="{{ p.id }}">{{ p.display_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-lg-3">
+            <label class="form-label">صاحب العهدة</label>
+            <select class="form-select" name="entity_account_id" id="settlementOwnerAccount">
+              {% for owner in owner_summaries %}
+                <option value="{{ owner.account.id }}" data-name="{{ owner.entity_name }}" data-type="{{ owner.entity_type }}" {% if owner.entity_name == selected_entity_name %}selected{% endif %}>{{ owner.entity_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-lg-3">
+            <label class="form-label">رقم المرجع</label>
+            <input class="form-control" name="reference">
+          </div>
+          <div class="col-lg-4">
+            <label class="form-label">الملاحظات</label>
+            <input class="form-control" name="notes" placeholder="وصف عام للعملية">
+          </div>
+          <div class="col-lg-2 d-grid align-self-end">
+            <button type="button" class="btn btn-outline-light" id="addSettlementLine">إضافة بند</button>
+          </div>
+        </div>
+
+        <div class="table-responsive mt-4">
+          <table class="table table-borderless align-middle mb-0">
+            <thead>
+              <tr>
+                <th>حساب المصروف</th>
+                <th>المبلغ</th>
+                <th>البيان</th>
+                <th>ملاحظات</th>
+                <th>رقم المرجع</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="settlementLinesBody">
+              <tr class="settlement-line-row">
+                <td>
+                  <select class="form-select" name="line_account_id">
+                    {% for acc in expense_accounts %}
+                      <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td><input type="number" step="0.01" min="0" class="form-control" name="line_amount" value="0"></td>
+                <td><input class="form-control" name="line_description" placeholder="بيان البند"></td>
+                <td><input class="form-control" name="line_notes" placeholder="ملاحظات خاصة"></td>
+                <td><input class="form-control" name="line_reference" placeholder="مرجع البند"></td>
+                <td><button type="button" class="btn btn-danger btn-sm remove-line">حذف</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex justify-content-end mt-4">
+          <button class="btn btn-cyan">حفظ التسوية</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="disburseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post">
+        <div class="modal-header">
+          <h5 class="modal-title">إدخال صرف عهدة</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="operation_type" value="صرف عهدة">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">رقم العملية</label>
+              <input class="form-control" value="يتم توليده تلقائيا" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">المرجع</label>
+              <input class="form-control" name="reference">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">التاريخ</label>
+              <input type="date" class="form-control" name="date" value="{{ selected_rows[-1].item.date if selected_rows else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">اسم صاحب العهدة</label>
+              <select class="form-select" name="entity_account_id" required>
+                {% for acc in accounts %}
+                  <option value="{{ acc.id }}">{{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">طريقة الصرف</label>
+              <select class="form-select" name="treasury_account_id" required>
+                {% for acc in accounts %}
+                  <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">مبلغ العهدة</label>
+              <input type="number" step="0.01" min="0" class="form-control" name="amount" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">بيان العهدة</label>
+              <input class="form-control" name="expense_item" placeholder="بيان الصرف">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">ملاحظات</label>
+              <input class="form-control" name="notes">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ الصرف</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="returnModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post">
+        <div class="modal-header">
+          <h5 class="modal-title">رد باقي العهد</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="operation_type" value="رد باقي عهدة">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">رقم العملية</label>
+              <input class="form-control" value="يتم توليده تلقائيا" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">المرجع</label>
+              <input class="form-control" name="reference">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">التاريخ</label>
+              <input type="date" class="form-control" name="date" value="{{ selected_rows[-1].item.date if selected_rows else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">اسم صاحب العهدة</label>
+              <select class="form-select" name="entity_account_id" required>
+                {% for acc in accounts %}
+                  <option value="{{ acc.id }}">{{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">إلى حساب</label>
+              <select class="form-select" name="treasury_account_id" required>
+                {% for acc in accounts %}
+                  <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">المبلغ المرتجع</label>
+              <input type="number" step="0.01" min="0" class="form-control" name="amount" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">ملاحظات</label>
+              <input class="form-control" name="notes">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ الرد</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+  .custody-page .owner-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 72vh;
+    overflow: auto;
+    padding-left: 4px;
+  }
+  .custody-page .owner-item {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid #e0e8f4;
+    border-radius: 12px;
+    padding: 12px;
+    background: #fff;
+  }
+  .custody-page .owner-item.active {
+    background: #edf4ff;
+    border-color: #c5d7f5;
+  }
+  .custody-page .settlement-line-row td {
+    vertical-align: top;
+  }
+</style>
+
+<script>
+  (function () {
+    const ownerAccount = document.getElementById('settlementOwnerAccount');
+    const addLineBtn = document.getElementById('addSettlementLine');
+    const linesBody = document.getElementById('settlementLinesBody');
+
+    function bindRemoveButtons() {
+      document.querySelectorAll('.remove-line').forEach(function (btn) {
+        btn.onclick = function () {
+          const rows = linesBody ? linesBody.querySelectorAll('.settlement-line-row') : [];
+          if (rows.length > 1) {
+            btn.closest('tr').remove();
+          }
+        };
+      });
+    }
+
+    if (addLineBtn && linesBody) {
+      addLineBtn.addEventListener('click', function () {
+        const template = linesBody.querySelector('.settlement-line-row');
+        if (!template) return;
+        const clone = template.cloneNode(true);
+        clone.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+        const amountInput = clone.querySelector('input[name="line_amount"]');
+        if (amountInput) amountInput.value = '0';
+        linesBody.appendChild(clone);
+        bindRemoveButtons();
+      });
+    }
+
+    bindRemoveButtons();
+  })();
+</script>
+{% endblock %}

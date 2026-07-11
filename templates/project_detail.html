@@ -1,0 +1,112 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">تفاصيل المشروع: {{ project.display_name }}</h2>
+      <p class="text-muted">الكود: {{ project.code }} — العميل: {{ project.client_name }} — قيمة العقد: {{ project.contract_value }} — نوع العقد: {{ project.contract_type }}</p>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة بند أعمال</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">اسم البند</label><input class="form-control" name="name" required></div>
+        <div class="mb-3"><label class="form-label">التكلفة التقديرية</label><input type="number" step="0.01" class="form-control" name="estimated_cost"></div>
+        <div class="mb-3"><label class="form-label">الكمية المتعاقد عليها</label><input type="number" step="0.01" class="form-control" name="quantity"></div>
+        <div class="mb-3"><label class="form-label">نسبة التنفيذ</label><input type="number" step="0.01" class="form-control" name="execution_percentage"></div>
+        <div class="mb-3"><label class="form-label">مرحلة التنفيذ</label><input class="form-control" name="stage"></div>
+        <button class="btn btn-cyan mt-2">حفظ بند</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="row gy-3">
+      {% for label, value, badge in [
+          ('إجمالي التكلفة', cost_summary.total_cost, 'bg-primary'),
+          ('تكلفة المواد', cost_summary.materials, 'bg-success'),
+          ('تكلفة العمالة', cost_summary.labor, 'bg-warning'),
+          ('تكلفة المعدات', cost_summary.equipment, 'bg-info'),
+          ('تكاليف غير مباشرة', cost_summary.indirect, 'bg-secondary'),
+          ('تكلفة الإشراف', cost_summary.supervision, 'bg-dark'),
+          ('مصاريف إدارية', cost_summary.overhead, 'bg-danger')
+        ] %}
+        <div class="col-md-6">
+          <div class="glass-card p-3 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="mb-1">{{ label }}</h6>
+                <p class="h3 mb-0">{{ value }}</p>
+              </div>
+              <span class="badge {{ badge }} py-2 px-3">&nbsp;</span>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<div class="row gy-4 mt-3 fade-up">
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">بنود الأعمال</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>البند</th><th>تكلفة</th><th>كمية</th><th>تنفيذ %</th><th>مرحلة</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in boq_items %}
+              <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.estimated_cost }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.execution_percentage }}</td>
+                <td>{{ item.stage }}</td>
+                <td><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editBoq{{ item.id }}">تعديل</button></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="text-center text-muted">لا توجد بنود أعمال</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in boq_items %}
+        <div class="modal fade" id="editBoq{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_boq_item', project_id=project.id, boq_item_id=item.id) }}">
+                <div class="modal-header"><h5 class="modal-title">تعديل بند الأعمال</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                  <div class="mb-3"><label class="form-label">اسم البند</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                  <div class="mb-3"><label class="form-label">التكلفة التقديرية</label><input type="number" step="0.01" class="form-control" name="estimated_cost" value="{{ item.estimated_cost }}"></div>
+                  <div class="mb-3"><label class="form-label">الكمية</label><input type="number" step="0.01" class="form-control" name="quantity" value="{{ item.quantity }}"></div>
+                  <div class="mb-3"><label class="form-label">نسبة التنفيذ</label><input type="number" step="0.01" class="form-control" name="execution_percentage" value="{{ item.execution_percentage }}"></div>
+                  <div class="mb-3"><label class="form-label">مرحلة التنفيذ</label><input class="form-control" name="stage" value="{{ item.stage or '' }}"></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ التعديل</button></div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">مشتريات ومخزون المشروع</h5>
+      <div class="alert alert-info">
+        <p class="mb-1">أوامر الشراء المسجلة: <strong>{{ purchase_orders|length }}</strong></p>
+        <p class="mb-0">حركات المخزون المسجلة: <strong>{{ inventory_transactions|length }}</strong></p>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-borderless">
+          <tbody>
+            <tr><td>أوامر الشراء</td><td class="text-end">{{ purchase_orders|length }}</td></tr>
+            <tr><td>حركات المخزون</td><td class="text-end">{{ inventory_transactions|length }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

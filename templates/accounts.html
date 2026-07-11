@@ -1,0 +1,235 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">دليل الحسابات</h2>
+          <p class="text-muted">أضف حسابات جديدة وحدد الفئة والمشروع والبند بسهولة.</p>
+        </div>
+        <div class="d-flex flex-column gap-2">
+          <span class="badge bg-secondary py-2 px-3">إجمالي الحسابات: {{ charts|length }}</span>
+          <span class="badge bg-info text-dark py-2 px-3">رصيد الخزنة الحالي: {{ treasury_balance|groupnum }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة حساب جديد</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">الكود</label><input class="form-control" name="code" required></div>
+        <div class="mb-3"><label class="form-label">الاسم</label><input class="form-control" name="name" required></div>
+        <div class="mb-3"><label class="form-label">الفئة</label>
+          <select class="form-select" name="category">
+            {% for category in category_options %}
+              <option value="{{ category }}">{{ category }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-12"><label class="form-label">رصيد افتتاحي</label><input type="number" step="0.01" class="form-control" name="opening_balance" value="0"></div>
+        </div>
+        <div class="mb-3"><label class="form-label">مشروع (اختياري)</label>
+          <select class="form-select" name="project_id">
+            <option value="">-- بدون مشروع --</option>
+            {% for item in projects %}
+              <option value="{{ item.id }}">{{ item.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3"><label class="form-label">بند أعمال (اختياري)</label>
+          <select class="form-select" name="boq_item_id">
+            <option value="">-- بدون بند --</option>
+            {% for item in boq_items %}
+              <option value="{{ item.id }}">{{ item.name }} ({{ item.project.code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3"><label class="form-label">مرحلة</label><input class="form-control" name="stage"></div>
+        <button class="btn btn-cyan mt-2">حفظ الحساب</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة الحسابات</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-8">
+          <input id="accountSearch" type="text" class="form-control" placeholder="ابحث في الكود، الاسم، أو الفئة">
+        </div>
+        <div class="col-lg-4">
+          <button id="accountResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not charts %}
+        <div class="alert alert-info mb-3">دليل الحسابات فارغ. أضف حسابات أساسية مثل الأصول، الالتزامات، المصروفات، والإيرادات.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="accountTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>كود</th><th>اسم</th><th>فئة</th><th>رصيد افتتاحي</th><th>الرصيد الحالي</th><th>مشروع</th><th>بند</th><th>مرحلة</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in charts %}
+              <tr data-search="{{ item.code }} {{ item.name }} {{ item.category }}">
+                <td>{{ item.code }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.category }}</td>
+                <td>{{ (item.opening_balance or 0)|groupnum }}</td>
+                <td>{{ account_balances.get(item.id, 0)|groupnum }}</td>
+                <td>{{ item.project.display_name if item.project else '-' }}</td>
+                <td>{{ item.boq_item.name if item.boq_item else '-' }}</td>
+                <td>{{ item.stage or '-' }}</td>
+                <td>
+                  <div class="d-flex gap-1 flex-wrap">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-info edit-account-btn"
+                      data-bs-toggle="modal"
+                      data-bs-target="#editAccountModal"
+                      data-account-id="{{ item.id }}"
+                      data-code="{{ item.code }}"
+                      data-name="{{ item.name }}"
+                      data-category="{{ item.category }}"
+                      data-opening-balance="{{ item.opening_balance or 0 }}"
+                      data-project-id="{{ item.project_id or '' }}"
+                      data-boq-item-id="{{ item.boq_item_id or '' }}"
+                      data-stage="{{ item.stage or '' }}"
+                    >تعديل</button>
+                    <form method="post" action="{{ url_for('delete_account', account_id=item.id) }}" onsubmit="return confirm('هل تريد حذف هذا الحساب؟');">
+                      <button type="submit" class="btn btn-sm btn-danger">حذف</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا توجد حسابات في الدليل</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="editAccountModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editAccountForm" method="post" action="{{ url_for('update_account', account_id=0) }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editAccountTitle">تعديل الحساب</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">الكود</label><input id="editCode" class="form-control" name="code" required></div>
+          <div class="mb-3"><label class="form-label">الاسم</label><input id="editName" class="form-control" name="name" required></div>
+          <div class="mb-3"><label class="form-label">الفئة</label>
+            <select id="editCategory" class="form-select" name="category">
+              {% for category in category_options %}
+                <option value="{{ category }}">{{ category }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-12"><label class="form-label">رصيد افتتاحي</label><input id="editOpeningBalance" type="number" step="0.01" class="form-control" name="opening_balance"></div>
+          </div>
+          <div class="mb-3"><label class="form-label">مشروع (اختياري)</label>
+            <select id="editProjectId" class="form-select" name="project_id">
+              <option value="">-- بدون مشروع --</option>
+              {% for project in projects %}
+                <option value="{{ project.id }}">{{ project.display_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3"><label class="form-label">بند أعمال (اختياري)</label>
+            <select id="editBoqItemId" class="form-select" name="boq_item_id">
+              <option value="">-- بدون بند --</option>
+              {% for boq in boq_items %}
+                <option value="{{ boq.id }}">{{ boq.name }} ({{ boq.project.code }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3"><label class="form-label">مرحلة</label><input id="editStage" class="form-control" name="stage"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+          <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const table = document.getElementById('accountTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('accountSearch');
+    const resetBtn = document.getElementById('accountResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const matches = !searchText || rowText.includes(searchText);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    const editForm = document.getElementById('editAccountForm');
+    const editTitle = document.getElementById('editAccountTitle');
+    const editCode = document.getElementById('editCode');
+    const editName = document.getElementById('editName');
+    const editCategory = document.getElementById('editCategory');
+    const editOpeningBalance = document.getElementById('editOpeningBalance');
+    const editProjectId = document.getElementById('editProjectId');
+    const editBoqItemId = document.getElementById('editBoqItemId');
+    const editStage = document.getElementById('editStage');
+    const updatePathTemplate = '{{ url_for("update_account", account_id=0) }}';
+
+    function setSelectValue(selectEl, value) {
+      if (!selectEl) return;
+      const target = (value || '').toString();
+      const exists = Array.from(selectEl.options).some(opt => opt.value === target);
+      selectEl.value = exists ? target : '';
+    }
+
+    document.querySelectorAll('.edit-account-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const accountId = btn.dataset.accountId || '';
+        const accountCode = btn.dataset.code || '';
+        const accountName = btn.dataset.name || '';
+        const accountCategory = btn.dataset.category || '';
+        const openingBalance = btn.dataset.openingBalance || '0';
+        const projectId = btn.dataset.projectId || '';
+        const boqItemId = btn.dataset.boqItemId || '';
+        const stage = btn.dataset.stage || '';
+
+        if (editForm) {
+          editForm.action = updatePathTemplate.replace('/0/update', `/${accountId}/update`);
+        }
+        if (editTitle) {
+          editTitle.textContent = `تعديل الحساب ${accountCode}`;
+        }
+        if (editCode) editCode.value = accountCode;
+        if (editName) editName.value = accountName;
+        if (editCategory) setSelectValue(editCategory, accountCategory);
+        if (editOpeningBalance) editOpeningBalance.value = openingBalance;
+        if (editProjectId) setSelectValue(editProjectId, projectId);
+        if (editBoqItemId) setSelectValue(editBoqItemId, boqItemId);
+        if (editStage) editStage.value = stage;
+      });
+    });
+
+    searchInput?.addEventListener('input', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}
