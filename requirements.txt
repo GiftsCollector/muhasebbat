@@ -1,7 +1,0 @@
-Flask==2.3.2
-Flask-SQLAlchemy==2.5.1
-SQLAlchemy==1.4.46
-gunicorn==22.0.0
-Werkzeug==2.3.6
-setuptools>=65.0.0
-python-dotenv==1.0.0
