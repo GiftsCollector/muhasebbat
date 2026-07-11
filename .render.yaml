@@ -1,0 +1,7 @@
+services:
+- type: web
+  name: muhasebbat
+  runtime: python
+  pythonVersion: 3.11.5
+  buildCommand: ./build.sh
+  startCommand: gunicorn run:app
