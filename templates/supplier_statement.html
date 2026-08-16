@@ -1,0 +1,131 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">كشف حساب المورد</h2>
+          <p class="text-muted mb-1">{{ supplier.name }}</p>
+          <div class="small text-muted">{{ supplier.contact_info or 'بدون بيانات اتصال' }}</div>
+          {% if supplier_account %}
+            <div class="small text-muted mt-1">الحساب المرتبط: {{ supplier_account.code }} - {{ supplier_account.name }}</div>
+          {% else %}
+            <div class="small text-warning mt-1">لا يوجد حساب مرتبط بالمورد في دليل الحسابات بعد.</div>
+          {% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('suppliers') }}">العودة للموردين</a>
+          <a class="btn btn-cyan btn-sm" href="{{ url_for('purchase_orders') }}">أمر شراء جديد</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">إجمالي أوامر الشراء</div>
+          <div class="h5 mb-0">{{ total_orders_value|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">إجمالي المدفوع</div>
+          <div class="h5 mb-0">{{ total_paid_value|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">إجمالي المستحق</div>
+          <div class="h5 mb-0">{{ total_due_value|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">رصيد حساب المورد (المستحق - المدفوع)</div>
+          <div class="h5 mb-0">{{ supplier_balance|groupnum }}</div>
+          <div class="small text-muted mt-1">{{ total_due_value|groupnum }} - {{ total_paid_value|groupnum }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">حركات المورد (مترابطة)</h5>
+      {% if not movements %}
+        <div class="alert alert-info mb-0">لا توجد حركات مرتبطة بهذا المورد حتى الآن.</div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-borderless table-hover align-middle">
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>المصدر</th>
+                <th>المرجع</th>
+                <th>الوصف</th>
+                <th>المشروع</th>
+                <th>مدين</th>
+                <th>دائن</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for movement in movements %}
+                <tr>
+                  <td>{{ movement.date or '-' }}</td>
+                  <td>{{ movement.source }}</td>
+                  <td>{{ movement.reference }}</td>
+                  <td>{{ movement.description }}</td>
+                  <td>{{ movement.project }}</td>
+                  <td>{{ movement.debit|groupnum }}</td>
+                  <td>{{ movement.credit|groupnum }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">أوامر الشراء الخاصة بالمورد</h5>
+      {% if not supplier_orders %}
+        <div class="alert alert-info mb-0">لا توجد أوامر شراء لهذا المورد.</div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-borderless table-hover align-middle">
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>المشروع</th>
+                <th>الصنف</th>
+                <th>طلب</th>
+                <th>فاتورة</th>
+                <th>الحالة</th>
+                <th>القيمة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in supplier_orders %}
+                <tr>
+                  <td>{{ item.date or '-' }}</td>
+                  <td>{{ item.project.display_name if item.project else '-' }}</td>
+                  <td>{{ item.item_name or '-' }}</td>
+                  <td>{{ item.order_number or '-' }}</td>
+                  <td>{{ item.invoice_number or '-' }}</td>
+                  <td>{{ item.status or '-' }}</td>
+                  <td>{{ item.total_value|groupnum }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

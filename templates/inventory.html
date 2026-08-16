@@ -1,0 +1,146 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">إدارة المخازن</h2>
+          <p class="text-muted">سجل الحركات المخزنية، التحويلات، والإضافة مع واجهة مرتبة وواضحة.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي الحركات: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">حركة مخزون جديدة</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">المشروع</label><select class="form-select" name="project_id" required>{% for item in projects %}<option value="{{ item.id }}">{{ item.code }}</option>{% endfor %}</select></div>
+        <div class="mb-3"><label class="form-label">المورد (اختياري)</label><select class="form-select" name="supplier_id"><option value="">-- بدون مورد --</option>{% for supplier in suppliers %}<option value="{{ supplier.id }}">{{ supplier.name }}</option>{% endfor %}</select></div>
+        <div class="mb-3"><label class="form-label">المخزن</label><input class="form-control" name="warehouse_name" required></div>
+        <div class="mb-3">
+          <label class="form-label">اختيار مادة مسجلة</label>
+          <select class="form-select form-select-sm inventory-material-picker mb-2">
+            <option value="">-- اختيار سريع --</option>
+            {% for material_name in material_names %}
+              <option value="{{ material_name }}">{{ material_name }}</option>
+            {% endfor %}
+          </select>
+          <label class="form-label">المادة</label>
+          <input class="form-control inventory-material-input" name="material_name" required>
+        </div>
+        <div class="row g-3"><div class="col-md-4"><label class="form-label">الكمية</label><input type="number" step="0.01" class="form-control" name="quantity"></div><div class="col-md-4"><label class="form-label">تكلفة الوحدة</label><input type="number" step="0.01" class="form-control" name="unit_cost"></div><div class="col-md-4"><label class="form-label">النوع</label><select class="form-select" name="transaction_type"><option>إضافة</option><option>سحب</option><option>تحويل</option></select></div></div>
+        <div class="mb-3"><label class="form-label">المخزن الوجهة (لتحويل)</label><input class="form-control" name="destination_warehouse"></div>
+        <div class="mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date"></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <button class="btn btn-cyan mt-2">حفظ الحركة</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">سجل حركات المخزون</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-6">
+          <input id="invSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في المادة أو المخزن">
+        </div>
+        <div class="col-lg-3">
+          <select id="invProject" class="form-select form-select-sm">
+            <option value="">-- الكل --</option>
+            {% for project in projects %}
+              <option value="{{ project.code }}">{{ project.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button id="invResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا توجد حركات مخزنية بعد. سجّل حركة إضافة أو سحب أو تحويل للبدء.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="invTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>المشروع</th><th>المورد</th><th>المخزن</th><th>المادة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>النوع</th><th>التاريخ</th><th>إجراءات</th></tr></thead>
+          <tbody>{% for item in items %}<tr data-search="{{ item.material_name }} {{ item.warehouse_name }} {{ item.supplier.name if item.supplier else '' }}" data-project="{{ item.project.code }}"><td>{{ item.project.display_name }}</td><td>{{ item.supplier.name if item.supplier else '-' }}</td><td>{{ item.warehouse_name or '-' }}</td><td>{{ item.material_name or '-' }}</td><td>{{ item.quantity }}</td><td>{{ item.unit_cost }}</td><td>{{ item.transaction_type or '-' }}</td><td>{{ item.date or '-' }}</td><td><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editInv{{ item.id }}">تعديل</button></td></tr>{% else %}<tr><td colspan="9" class="text-center text-muted">لا توجد حركات</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      {% for item in items %}
+        <div class="modal fade" id="editInv{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_inventory_transaction', transaction_id=item.id) }}">
+                <div class="modal-header"><h5 class="modal-title">تعديل حركة مخزون</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                  <div class="mb-3"><label class="form-label">المشروع</label><select class="form-select" name="project_id" required>{% for p in projects %}<option value="{{ p.id }}" {% if item.project_id == p.id %}selected{% endif %}>{{ p.code }}</option>{% endfor %}</select></div>
+                  <div class="mb-3"><label class="form-label">المورد (اختياري)</label><select class="form-select" name="supplier_id"><option value="">-- بدون مورد --</option>{% for supplier in suppliers %}<option value="{{ supplier.id }}" {% if item.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.name }}</option>{% endfor %}</select></div>
+                  <div class="mb-3"><label class="form-label">المخزن</label><input class="form-control" name="warehouse_name" value="{{ item.warehouse_name }}" required></div>
+                  <div class="mb-3">
+                    <label class="form-label">اختيار مادة مسجلة</label>
+                    <select class="form-select form-select-sm inventory-material-picker mb-2">
+                      <option value="">-- اختيار سريع --</option>
+                      {% for material_name in material_names %}
+                        <option value="{{ material_name }}" {% if item.material_name == material_name %}selected{% endif %}>{{ material_name }}</option>
+                      {% endfor %}
+                    </select>
+                    <label class="form-label">المادة</label>
+                    <input class="form-control inventory-material-input" name="material_name" value="{{ item.material_name }}" required>
+                  </div>
+                  <div class="row g-3"><div class="col-md-4"><label class="form-label">الكمية</label><input type="number" step="0.01" class="form-control" name="quantity" value="{{ item.quantity }}"></div><div class="col-md-4"><label class="form-label">تكلفة الوحدة</label><input type="number" step="0.01" class="form-control" name="unit_cost" value="{{ item.unit_cost }}"></div><div class="col-md-4"><label class="form-label">النوع</label><select class="form-select" name="transaction_type"><option value="إضافة" {% if item.transaction_type == 'إضافة' %}selected{% endif %}>إضافة</option><option value="سحب" {% if item.transaction_type == 'سحب' %}selected{% endif %}>سحب</option><option value="تحويل" {% if item.transaction_type == 'تحويل' %}selected{% endif %}>تحويل</option></select></div></div>
+                  <div class="mb-3 mt-3"><label class="form-label">المخزن الوجهة</label><input class="form-control" name="destination_warehouse" value="{{ item.destination_warehouse or '' }}"></div>
+                  <div class="mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div>
+                  <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes">{{ item.notes or '' }}</textarea></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ التعديل</button></div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('invTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('invSearch');
+    const projectSelect = document.getElementById('invProject');
+    const resetBtn = document.getElementById('invResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+
+    document.querySelectorAll('.inventory-material-picker').forEach((picker) => {
+      picker.addEventListener('change', () => {
+        if (!picker.value) return;
+        const container = picker.closest('.mb-3');
+        const input = container?.querySelector('.inventory-material-input');
+        if (input) input.value = picker.value;
+      });
+    });
+  })();
+</script>
+{% endblock %}
