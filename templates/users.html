@@ -1,0 +1,91 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">إدارة المستخدمين</h2>
+          <p class="text-muted mb-0">أنشئ حساب لكل موظف وحدد الصلاحية وحالة التفعيل.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي المستخدمين: {{ users|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة مستخدم جديد</h5>
+      <form method="post" class="row g-3">
+        <div class="col-12"><label class="form-label">اسم المستخدم</label><input class="form-control" name="username" required></div>
+        <div class="col-12"><label class="form-label">الاسم الكامل</label><input class="form-control" name="full_name" required></div>
+        <div class="col-md-6"><label class="form-label">كلمة المرور</label><input type="password" class="form-control" name="password" required minlength="6"></div>
+        <div class="col-md-6"><label class="form-label">الصلاحية</label><select class="form-select" name="role"><option value="user">مستخدم</option><option value="admin">مدير</option></select></div>
+        <div class="col-12 form-check mt-2 me-3">
+          <input class="form-check-input" type="checkbox" name="is_active" id="is_active_new" checked>
+          <label class="form-check-label" for="is_active_new">حساب مفعل</label>
+        </div>
+        <div class="col-12 d-grid"><button class="btn btn-cyan">حفظ المستخدم</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة المستخدمين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>اسم المستخدم</th><th>الاسم الكامل</th><th>الصلاحية</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in users %}
+              <tr>
+                <td>{{ item.username }}</td>
+                <td>{{ item.full_name }}</td>
+                <td>{{ 'مدير' if item.role == 'admin' else 'مستخدم' }}</td>
+                <td>
+                  {% if item.is_active %}
+                    <span class="badge bg-success">مفعل</span>
+                  {% else %}
+                    <span class="badge bg-danger">متوقف</span>
+                  {% endif %}
+                </td>
+                <td><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editUser{{ item.id }}">تعديل</button></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted">لا يوجد مستخدمون</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in users %}
+        <div class="modal fade" id="editUser{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_user', user_id=item.id) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل المستخدم {{ item.username }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body row g-3">
+                  <div class="col-md-6"><label class="form-label">الاسم الكامل</label><input class="form-control" name="full_name" value="{{ item.full_name }}" required></div>
+                  <div class="col-md-6"><label class="form-label">الصلاحية</label><select class="form-select" name="role"><option value="user" {% if item.role == 'user' %}selected{% endif %}>مستخدم</option><option value="admin" {% if item.role == 'admin' %}selected{% endif %}>مدير</option></select></div>
+                  <div class="col-12"><label class="form-label">كلمة مرور جديدة (اختياري)</label><input type="password" class="form-control" name="password" minlength="6"></div>
+                  <div class="col-12 form-check mt-1 me-3">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="is_active_{{ item.id }}" {% if item.is_active %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active_{{ item.id }}">حساب مفعل</label>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
