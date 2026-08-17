@@ -1,0 +1,213 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">أوامر الشراء</h2>
+          <p class="text-muted">سجل أوامر الشراء والفواتير المرتبطة بالمشروع والموردين.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">أجمالي الأوامر: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">أمر شراء جديد</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">المشروع</label><select class="form-select" name="project_id" required>{% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}</select></div>
+        <div class="mb-3"><label class="form-label">المورد</label><select class="form-select" name="supplier_id"><option value="">-- بدون مورد --</option>{% for item in suppliers %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}</select></div>
+        <div class="mb-3">
+          <label class="form-label">اختيار مخزن مسجل</label>
+          <select class="form-select form-select-sm warehouse-picker mb-2">
+            <option value="">-- اختيار سريع --</option>
+            {% for warehouse_name in warehouse_names %}
+              <option value="{{ warehouse_name }}">{{ warehouse_name }}</option>
+            {% endfor %}
+          </select>
+          <label class="form-label">المخزن</label>
+          <input class="form-control po-warehouse-name" name="warehouse_name" placeholder="المخزن الرئيسي">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">اختيار صنف مسجل</label>
+          <select class="form-select form-select-sm material-picker mb-2">
+            <option value="">-- اختيار سريع --</option>
+            {% for material_name in material_names %}
+              <option value="{{ material_name }}">{{ material_name }}</option>
+            {% endfor %}
+          </select>
+          <label class="form-label">اسم الصنف</label>
+          <input class="form-control po-item-name" name="item_name" placeholder="اسم الصنف" required>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-3"><label class="form-label">الكمية</label><input type="number" step="0.01" min="0" class="form-control po-quantity" name="quantity" value="0" required></div>
+          <div class="col-md-3"><label class="form-label">السعر</label><input type="number" step="0.01" min="0" class="form-control po-unit-price" name="unit_price" value="0" required></div>
+          <div class="col-md-3"><label class="form-label">الخصم</label><input type="number" step="0.01" min="0" class="form-control po-discount" name="discount" value="0"></div>
+          <div class="col-md-3"><label class="form-label">القيمة الكلية</label><input type="number" step="0.01" class="form-control po-total-value" name="total_value" value="0" readonly></div>
+        </div>
+        <div class="mb-3"><label class="form-label">رقم الطلب</label><input class="form-control" name="order_number"></div>
+        <div class="mb-3"><label class="form-label">رقم الفاتورة</label><input class="form-control" name="invoice_number"></div>
+        <div class="row g-3"><div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date"></div><div class="col-md-6"><label class="form-label">الحالة</label><select class="form-select" name="status"><option>مفتوح</option><option>مغلق</option><option>مدفوع</option></select></div></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <button class="btn btn-cyan mt-2">حفظ أمر الشراء</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة أوامر الشراء</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-6">
+          <input id="poSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في رقم الطلب أو المورد">
+        </div>
+        <div class="col-lg-3">
+          <select id="poProject" class="form-select form-select-sm">
+            <option value="">-- الكل --</option>
+            {% for project in projects %}
+              <option value="{{ project.code }}">{{ project.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button id="poResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا توجد أوامر شراء بعد. أضف أمر شراء جديد وسيتم متابعة حالته من هنا.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="poTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>المشروع</th><th>المخزن</th><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الخصم</th><th>القيمة</th><th>المورد</th><th>طلب</th><th>فاتورة</th><th>التاريخ</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody>{% for item in items %}<tr data-search="{{ item.order_number }} {{ item.item_name or '' }} {{ item.supplier.name if item.supplier else '' }} {{ item.warehouse_name or '' }}" data-project="{{ item.project.code }}"><td>{{ item.project.display_name }}</td><td>{{ item.warehouse_name or 'المخزن الرئيسي' }}</td><td>{{ item.item_name or '-' }}</td><td>{{ item.quantity }}</td><td>{{ item.unit_price }}</td><td>{{ item.discount }}</td><td>{{ item.total_value }}</td><td>{{ item.supplier.name if item.supplier else '-' }}</td><td>{{ item.order_number or '-' }}</td><td>{{ item.invoice_number or '-' }}</td><td>{{ item.date or '-' }}</td><td>{{ item.status or '-' }}</td><td><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editPO{{ item.id }}">تعديل</button></td></tr>{% else %}<tr><td colspan="13" class="text-center text-muted">لا توجد أوامر شراء</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      {% for item in items %}
+        <div class="modal fade" id="editPO{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_purchase_order', order_id=item.id) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل أمر الشراء</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3"><label class="form-label">المشروع</label><select class="form-select" name="project_id" required>{% for p in projects %}<option value="{{ p.id }}" {% if item.project_id == p.id %}selected{% endif %}>{{ p.display_name }}</option>{% endfor %}</select></div>
+                  <div class="mb-3"><label class="form-label">المورد</label><select class="form-select" name="supplier_id"><option value="">-- بدون مورد --</option>{% for s in suppliers %}<option value="{{ s.id }}" {% if item.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></div>
+                  <div class="mb-3">
+                    <label class="form-label">اختيار مخزن مسجل</label>
+                    <select class="form-select form-select-sm warehouse-picker mb-2">
+                      <option value="">-- اختيار سريع --</option>
+                      {% for warehouse_name in warehouse_names %}
+                        <option value="{{ warehouse_name }}">{{ warehouse_name }}</option>
+                      {% endfor %}
+                    </select>
+                    <label class="form-label">المخزن</label>
+                    <input class="form-control po-warehouse-name" name="warehouse_name" value="{{ item.warehouse_name or 'المخزن الرئيسي' }}">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">اختيار صنف مسجل</label>
+                    <select class="form-select form-select-sm material-picker mb-2">
+                      <option value="">-- اختيار سريع --</option>
+                      {% for material_name in material_names %}
+                        <option value="{{ material_name }}" {% if (item.item_name or '') == material_name %}selected{% endif %}>{{ material_name }}</option>
+                      {% endfor %}
+                    </select>
+                    <label class="form-label">اسم الصنف</label>
+                    <input class="form-control po-item-name" name="item_name" value="{{ item.item_name or '' }}" required>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-3"><label class="form-label">الكمية</label><input type="number" step="0.01" min="0" class="form-control po-quantity" name="quantity" value="{{ item.quantity }}" required></div>
+                    <div class="col-md-3"><label class="form-label">السعر</label><input type="number" step="0.01" min="0" class="form-control po-unit-price" name="unit_price" value="{{ item.unit_price }}" required></div>
+                    <div class="col-md-3"><label class="form-label">الخصم</label><input type="number" step="0.01" min="0" class="form-control po-discount" name="discount" value="{{ item.discount }}"></div>
+                    <div class="col-md-3"><label class="form-label">القيمة الكلية</label><input type="number" step="0.01" class="form-control po-total-value" name="total_value" value="{{ item.total_value }}" readonly></div>
+                  </div>
+                  <div class="mb-3"><label class="form-label">رقم الطلب</label><input class="form-control" name="order_number" value="{{ item.order_number or '' }}"></div>
+                  <div class="mb-3"><label class="form-label">رقم الفاتورة</label><input class="form-control" name="invoice_number" value="{{ item.invoice_number or '' }}"></div>
+                  <div class="row g-3"><div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div><div class="col-md-6"><label class="form-label">الحالة</label><select class="form-select" name="status"><option value="مفتوح" {% if item.status == 'مفتوح' %}selected{% endif %}>مفتوح</option><option value="مغلق" {% if item.status == 'مغلق' %}selected{% endif %}>مغلق</option><option value="مدفوع" {% if item.status == 'مدفوع' %}selected{% endif %}>مدفوع</option></select></div></div>
+                  <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes">{{ item.notes or '' }}</textarea></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ التعديل</button></div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('poTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('poSearch');
+    const projectSelect = document.getElementById('poProject');
+    const resetBtn = document.getElementById('poResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+
+    function updatePurchaseOrderTotal(form) {
+      const quantityInput = form.querySelector('.po-quantity');
+      const unitPriceInput = form.querySelector('.po-unit-price');
+      const discountInput = form.querySelector('.po-discount');
+      const totalInput = form.querySelector('.po-total-value');
+      if (!quantityInput || !unitPriceInput || !discountInput || !totalInput) return;
+
+      const quantity = Number(quantityInput.value) || 0;
+      const unitPrice = Number(unitPriceInput.value) || 0;
+      const discount = Number(discountInput.value) || 0;
+      const total = Math.max((quantity * unitPrice) - discount, 0);
+      totalInput.value = total.toFixed(2);
+    }
+
+    document.querySelectorAll('form').forEach((form) => {
+      if (!form.querySelector('.po-total-value')) return;
+      ['input', 'change'].forEach((eventName) => {
+        form.addEventListener(eventName, () => updatePurchaseOrderTotal(form));
+      });
+      updatePurchaseOrderTotal(form);
+    });
+
+    document.querySelectorAll('.material-picker').forEach((picker) => {
+      picker.addEventListener('change', () => {
+        if (!picker.value) return;
+        const container = picker.closest('.mb-3');
+        const input = container?.querySelector('.po-item-name');
+        if (input) input.value = picker.value;
+      });
+    });
+
+    document.querySelectorAll('.warehouse-picker').forEach((picker) => {
+      picker.addEventListener('change', () => {
+        if (!picker.value) return;
+        const container = picker.closest('.mb-3');
+        const input = container?.querySelector('.po-warehouse-name');
+        if (input) input.value = picker.value;
+      });
+    });
+
+  })();
+</script>
+{% endblock %}
