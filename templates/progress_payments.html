@@ -1,0 +1,432 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">مستخلصات مقاولي الباطن</h2>
+          <p class="text-muted mb-0">
+            الإجمالي المستحق للبند = الكمية المنفذة × سعر الفئة، وصافي المستحق للمقاول =
+            إجمالي قيمة الأعمال المنفذة − (الدفعات تحت الحساب + الاستقطاعات/الخصومات).
+          </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="modal" data-bs-target="#advanceModal">دفعة تحت الحساب</button>
+          <span class="badge bg-secondary py-2 px-3 align-self-center">عدد المستخلصات: {{ payments|length }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي الأعمال المنفذة</div><div class="h5 mb-0">{{ totals.works|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي الاستقطاعات</div><div class="h5 mb-0">{{ totals.deductions|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">دفعات تحت الحساب مخصومة</div><div class="h5 mb-0">{{ totals.advances|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">صافي المستحق</div><div class="h5 mb-0">{{ totals.net|groupnum }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="col-xl-6">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إنشاء مستخلص جديد</h5>
+      <form method="post" id="ppForm">
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label">المشروع / الموقع</label>
+            <select class="form-select" name="project_id" required>
+              {% for item in projects %}
+                <option value="{{ item.id }}">{{ item.display_name }} - {{ item.client_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">مقاول الباطن</label>
+            <select class="form-select" name="subcontractor_id" id="ppSubcontractor" required>
+              <option value="">اختر مقاول الباطن</option>
+              {% for item in subcontractors %}
+                <option value="{{ item.id }}"
+                        data-retention="{{ item.retention_percentage or 0 }}"
+                        data-tax="{{ item.tax_percentage or 0 }}"
+                        data-outstanding="{{ outstanding_advances_map.get(item.id, 0) }}">
+                  {{ item.display_code }} - {{ item.name }} ({{ item.entity_kind }})
+                </option>
+              {% endfor %}
+            </select>
+            <div class="form-text" id="ppOutstandingHint"></div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">رقم المستخلص</label>
+            <input class="form-control" name="payment_number" placeholder="تلقائي إن تُرك فارغًا">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">تاريخ المستخلص</label>
+            <input type="date" class="form-control" name="date" value="{{ today_date }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">فترة الأعمال</label>
+            <div class="d-flex gap-2">
+              <input type="date" name="period_start" class="form-control" title="من">
+              <input type="date" name="period_end" class="form-control" title="إلى">
+            </div>
+          </div>
+        </div>
+
+        <hr class="border-secondary">
+        <h6 class="mb-3">جدول بنود الأعمال</h6>
+        <div class="table-responsive">
+          <table class="table table-borderless align-middle mb-2">
+            <thead>
+              <tr>
+                <th style="min-width:150px">البند / نوع الخدمة</th>
+                <th style="min-width:120px">وحدة القياس</th>
+                <th style="min-width:110px">الكمية المنفذة</th>
+                <th style="min-width:110px">سعر الفئة</th>
+                <th style="min-width:120px">الإجمالي المستحق</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="items-container">
+              <tr class="item-row">
+                <td>
+                  <select class="form-select form-select-sm mb-1" name="boq_item_id">
+                    <option value="">-- بند مقايسة (اختياري) --</option>
+                    {% for item in boq_items %}
+                      <option value="{{ item.id }}">{{ item.name }} ({{ item.project.display_name }})</option>
+                    {% endfor %}
+                  </select>
+                  <input class="form-control form-control-sm" name="description" placeholder="مثال: ميول خرسانية">
+                </td>
+                <td>
+                  <select class="form-select form-select-sm" name="unit">
+                    {% for unit in unit_options %}
+                      <option value="{{ unit }}">{{ unit }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm line-qty" name="quantity" value="0"></td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm line-rate" name="unit_price" value="0"></td>
+                <td><input class="form-control form-control-sm line-total bg-light" value="0" readonly tabindex="-1"></td>
+                <td><button type="button" class="btn btn-outline-danger btn-sm remove-item">حذف</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-outline-light btn-sm mb-3" id="add-item">أضف بند</button>
+
+        <div class="alert alert-secondary d-flex justify-content-between align-items-center">
+          <span>إجمالي قيمة الأعمال المنفذة</span>
+          <strong id="ppWorksTotal">0</strong>
+        </div>
+
+        <h6 class="mb-3">الاستقطاعات والخصومات</h6>
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">نسبة الضمان/التأمين (%)</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="retention_percentage" id="ppRetentionPct" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">قيمة الضمان المحتجز</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="discount_insurance" id="ppRetentionValue" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">نسبة الضرائب (%)</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="tax_percentage" id="ppTaxPct" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">قيمة الضرائب</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="tax" id="ppTaxValue" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">غرامات</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="penalties" id="ppPenalties" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">استقطاعات أخرى</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="other_deductions" id="ppOther" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">دفعات تحت الحساب المخصومة</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="advance_deduction" id="ppAdvance" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">صافي المستحق للمقاول</label>
+            <input class="form-control bg-light fw-bold" id="ppNetValue" value="0" readonly tabindex="-1">
+          </div>
+        </div>
+
+        <div class="mb-3 mt-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
+        <button class="btn btn-cyan">حفظ المستخلص وترحيل قيوده</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-xl-6">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">سجل المستخلصات</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-6">
+          <input id="ppSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في المشروع أو المقاول أو رقم المستخلص">
+        </div>
+        <div class="col-lg-3">
+          <select id="ppProject" class="form-select form-select-sm">
+            <option value="">-- الكل --</option>
+            {% for project in projects %}
+              <option value="{{ project.code }}">{{ project.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button id="ppResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not payments %}
+        <div class="alert alert-info mb-3">لا توجد مستخلصات حتى الآن. أنشئ أول مستخلص وسيتم ترحيل قيوده تلقائيًا.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="ppTable" class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>رقم</th>
+              <th>المشروع</th>
+              <th>الجهة</th>
+              <th>التاريخ</th>
+              <th>إجمالي الأعمال</th>
+              <th>الاستقطاعات</th>
+              <th>دفعات</th>
+              <th>الصافي</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in payments %}
+              <tr data-search="{{ item.project.display_name }} {{ item.subcontractor.name if item.subcontractor else 'عميل' }} {{ item.document_number }}" data-project="{{ item.project.code }}">
+                <td>{{ item.document_number }}</td>
+                <td>{{ item.project.display_name }}</td>
+                <td>{{ item.subcontractor.name if item.subcontractor else 'العميل' }}</td>
+                <td>{{ item.date or item.period_end or '-' }}</td>
+                <td>{{ item.total_value|groupnum }}</td>
+                <td>{{ item.deductions_total|groupnum }}</td>
+                <td>{{ item.advance_deduction|groupnum }}</td>
+                <td class="fw-bold {% if item.net_value < 0 %}text-danger{% endif %}">{{ item.net_value|groupnum }}</td>
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-outline-info" href="{{ url_for('progress_payment_detail', payment_id=item.id) }}">تفاصيل</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('print_document', doc_type='progress', doc_id=item.id) }}">طباعة</a>
+                  <form method="post" action="{{ url_for('delete_operating_document', entity_type='progress_payment', entity_id=item.id) }}" class="d-inline" onsubmit="return confirm('إلغاء المستخلص وعكس القيود؟');">
+                    <button class="btn btn-sm btn-outline-danger">إلغاء</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا توجد مستخلصات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="advanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('create_subcontractor_payment') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">صرف دفعة تحت الحساب لمقاول باطن</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">مقاول الباطن</label>
+              <select class="form-select" name="subcontractor_id" required>
+                {% for item in subcontractors %}
+                  <option value="{{ item.id }}">{{ item.display_code }} - {{ item.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">المشروع</label>
+              <select class="form-select" name="project_id">
+                <option value="">-- بدون مشروع --</option>
+                {% for item in projects %}
+                  <option value="{{ item.id }}">{{ item.display_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">التاريخ</label>
+              <input type="date" class="form-control" name="date" value="{{ today_date }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">المبلغ</label>
+              <input type="number" step="0.01" min="0" class="form-control" name="amount" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">طريقة الصرف</label>
+              <select class="form-select" name="payment_method">
+                <option value="نقدي">نقدي</option>
+                <option value="بنكي">بنكي</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">الخزنة / الحساب المنصرف منه</label>
+              <select class="form-select" name="treasury_account_id" required>
+                {% for acc in treasury_accounts %}
+                  <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">المرجع</label>
+              <input class="form-control" name="reference">
+            </div>
+            <div class="col-12">
+              <label class="form-label">ملاحظات</label>
+              <input class="form-control" name="notes">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+          <button type="submit" class="btn btn-cyan">حفظ الدفعة</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const form = document.getElementById('ppForm');
+    if (!form) return;
+
+    const container = document.getElementById('items-container');
+    const worksTotalLabel = document.getElementById('ppWorksTotal');
+    const netValueLabel = document.getElementById('ppNetValue');
+    const retentionPct = document.getElementById('ppRetentionPct');
+    const retentionValue = document.getElementById('ppRetentionValue');
+    const taxPct = document.getElementById('ppTaxPct');
+    const taxValue = document.getElementById('ppTaxValue');
+    const penalties = document.getElementById('ppPenalties');
+    const other = document.getElementById('ppOther');
+    const advance = document.getElementById('ppAdvance');
+    const subcontractorSelect = document.getElementById('ppSubcontractor');
+    const outstandingHint = document.getElementById('ppOutstandingHint');
+
+    function num(input) {
+      const value = parseFloat(input && input.value);
+      return isNaN(value) ? 0 : value;
+    }
+
+    function format(value) {
+      return (Math.round(value * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    }
+
+    function recalc() {
+      let worksTotal = 0;
+      container.querySelectorAll('.item-row').forEach(function (row) {
+        const qty = num(row.querySelector('.line-qty'));
+        const rate = num(row.querySelector('.line-rate'));
+        const lineTotal = Math.round(qty * rate * 100) / 100;
+        const totalField = row.querySelector('.line-total');
+        if (totalField) totalField.value = format(lineTotal);
+        worksTotal += lineTotal;
+      });
+
+      worksTotal = Math.round(worksTotal * 100) / 100;
+      if (worksTotalLabel) worksTotalLabel.textContent = format(worksTotal);
+
+      // النسبة المئوية تتقدم على القيمة المباشرة إن أُدخلت
+      if (num(retentionPct) > 0) {
+        retentionValue.value = (Math.round(worksTotal * num(retentionPct)) / 100).toFixed(2);
+      }
+      if (num(taxPct) > 0) {
+        taxValue.value = (Math.round(worksTotal * num(taxPct)) / 100).toFixed(2);
+      }
+
+      const deductions = num(retentionValue) + num(taxValue) + num(penalties) + num(other);
+      const net = Math.round((worksTotal - (num(advance) + deductions)) * 100) / 100;
+      if (netValueLabel) {
+        netValueLabel.value = format(net);
+        netValueLabel.classList.toggle('text-danger', net < 0);
+      }
+    }
+
+    form.addEventListener('input', recalc);
+    form.addEventListener('change', recalc);
+
+    document.getElementById('add-item').addEventListener('click', function () {
+      const template = container.querySelector('.item-row');
+      const clone = template.cloneNode(true);
+      clone.querySelectorAll('input').forEach(function (input) {
+        input.value = input.classList.contains('line-qty') || input.classList.contains('line-rate') || input.classList.contains('line-total') ? '0' : '';
+      });
+      clone.querySelector('select[name="boq_item_id"]').value = '';
+      container.appendChild(clone);
+      recalc();
+    });
+
+    container.addEventListener('click', function (event) {
+      if (event.target.matches('.remove-item')) {
+        if (container.querySelectorAll('.item-row').length > 1) {
+          event.target.closest('.item-row').remove();
+          recalc();
+        }
+      }
+    });
+
+    if (subcontractorSelect) {
+      subcontractorSelect.addEventListener('change', function () {
+        const option = subcontractorSelect.options[subcontractorSelect.selectedIndex];
+        const retention = parseFloat(option.dataset.retention || 0) || 0;
+        const tax = parseFloat(option.dataset.tax || 0) || 0;
+        const outstanding = parseFloat(option.dataset.outstanding || 0) || 0;
+        if (retention > 0) retentionPct.value = retention;
+        if (tax > 0) taxPct.value = tax;
+        if (outstandingHint) {
+          outstandingHint.textContent = subcontractorSelect.value
+            ? 'دفعات تحت الحساب متاحة للخصم: ' + format(outstanding)
+            : '';
+        }
+        if (advance) {
+          advance.value = outstanding > 0 ? outstanding : 0;
+        }
+        recalc();
+      });
+    }
+
+    recalc();
+  })();
+
+  (function() {
+    const table = document.getElementById('ppTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('ppSearch');
+    const projectSelect = document.getElementById('ppProject');
+    const resetBtn = document.getElementById('ppResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}
