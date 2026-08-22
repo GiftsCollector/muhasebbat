@@ -1,0 +1,74 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4">
+      <h2 class="section-title">سداد الموردين</h2>
+      <p class="text-muted mb-0">منفصل عن أمر الشراء: مدين حساب المورد، دائن الخزنة أو البنك.</p>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4">
+      <h5 class="mb-3">سند سداد</h5>
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">المورد</label>
+          <select class="form-select" name="supplier_id" required>
+            <option value="">اختر</option>
+            {% for item in suppliers %}<option value="{{ item.id }}">{{ item.display_code }} - {{ item.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">المشروع (اختياري)</label>
+          <select class="form-select" name="project_id"><option value="">—</option>{% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}</select>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ today_date }}"></div>
+          <div class="col-md-6"><label class="form-label">المبلغ</label><input type="number" step="0.01" min="0.01" class="form-control" name="amount" required></div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-6">
+            <label class="form-label">طريقة السداد</label>
+            <select class="form-select" name="payment_method"><option>نقدي</option><option>بنكي</option></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">حساب الخزنة/البنك</label>
+            <select class="form-select" name="treasury_account_id">
+              {% for account in treasury_accounts %}<option value="{{ account.id }}">{{ account.code }} - {{ account.name }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="mb-3"><label class="form-label">المرجع</label><input class="form-control" name="reference"></div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><input class="form-control" name="notes"></div>
+        <button class="btn btn-primary">تسجيل السداد</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="glass-card p-4">
+      <h5 class="mb-3">الحركة</h5>
+      <table class="table table-hover align-middle">
+        <thead><tr><th>الرقم</th><th>التاريخ</th><th>المورد</th><th>الطريقة</th><th>المبلغ</th><th></th></tr></thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td>{{ item.document_number }}</td>
+              <td>{{ item.date or '-' }}</td>
+              <td>{{ item.supplier.name if item.supplier else '-' }}</td>
+              <td>{{ item.payment_method }}</td>
+              <td>{{ item.amount|groupnum }}</td>
+              <td>
+                <form method="post" action="{{ url_for('delete_operating_document', entity_type='supplier_payment', entity_id=item.id) }}" onsubmit="return confirm('عكس السداد؟');">
+                  <button class="btn btn-sm btn-outline-danger">إلغاء</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="text-center text-muted">لا توجد سدادات بعد.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
