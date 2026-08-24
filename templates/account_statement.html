@@ -1,0 +1,122 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">كشف حساب</h2>
+          <p class="mb-1 fw-semibold">{{ statement.account.code }} — {{ statement.account.name }}</p>
+          <div class="small text-muted">الفئة: {{ statement.account.category or '-' }} · طبيعة الحساب: {{ statement.nature }}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 no-print">
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('accounts') }}">العودة للحسابات</a>
+          <a class="btn btn-outline-info btn-sm" href="{{ url_for('print_document', doc_type='account', doc_id=statement.account.id, from_date=from_date, to_date=to_date) }}">طباعة / PDF</a>
+          <a class="btn btn-outline-light btn-sm" href="javascript:window.print()">طباعة سريعة</a>
+        </div>
+      </div>
+      <form method="get" class="row g-2 mt-3 align-items-end no-print">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">عرض الفترة</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('account_statement', account_id=statement.account.id) }}">كل الحركات</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">الرصيد الافتتاحي</div>
+          <div class="h5 mb-0">{{ statement.opening_display|groupnum }}</div>
+          <div class="small text-muted">{{ statement.opening_side }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">إجمالي المدين</div>
+          <div class="h5 mb-0">{{ statement.period_debit|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">إجمالي الدائن</div>
+          <div class="h5 mb-0">{{ statement.period_credit|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">الرصيد الختامي</div>
+          <div class="h5 mb-0">{{ statement.closing_display|groupnum }}</div>
+          <div class="small text-muted">{{ statement.closing_side }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">حركة الحساب</h5>
+      {% if not statement.movements %}
+        <div class="alert alert-info mb-0">لا توجد حركات مرحلة على هذا الحساب في الفترة المحددة.</div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-borderless table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>المرجع</th>
+                <th>البيان</th>
+                <th>الحساب المقابل</th>
+                <th>المشروع</th>
+                <th>المستخدم</th>
+                <th>مدين</th>
+                <th>دائن</th>
+                <th>الرصيد</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="table-light">
+                <td colspan="8" class="text-end">رصيد أول المدة</td>
+                <td class="fw-semibold">{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</td>
+              </tr>
+              {% for line in statement.movements %}
+                <tr>
+                  <td>{{ line.date or '-' }}</td>
+                  <td>
+                    {% if line.entry_id %}
+                      <a class="link-light" href="{{ url_for('journal_entry_detail', entry_id=line.entry_id) }}">{{ line.reference }}</a>
+                    {% else %}
+                      {{ line.reference }}
+                    {% endif %}
+                  </td>
+                  <td>{{ line.description }}</td>
+                  <td>{{ line.counter_account }}</td>
+                  <td>{{ line.project }}</td>
+                  <td>{{ line.user_name or '-' }}</td>
+                  <td>{{ line.debit|groupnum }}</td>
+                  <td>{{ line.credit|groupnum }}</td>
+                  <td class="fw-semibold">{{ line.running_display|groupnum }} {{ line.running_side }}</td>
+                </tr>
+              {% endfor %}
+              <tr class="table-light">
+                <td colspan="6" class="text-end fw-semibold">الإجمالي / الرصيد الختامي</td>
+                <td class="fw-bold">{{ statement.period_debit|groupnum }}</td>
+                <td class="fw-bold">{{ statement.period_credit|groupnum }}</td>
+                <td class="fw-bold">{{ statement.closing_display|groupnum }} {{ statement.closing_side }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<style>
+@media print {
+  .no-print, .app-sidebar, aside, .flash-wrap { display: none !important; }
+  .glass-card { box-shadow: none !important; background: #fff !important; color: #000 !important; }
+}
+</style>
+{% endblock %}
