@@ -1,0 +1,60 @@
+C:/Users/Adam/Desktop/محاسبات/static/company-logo-bg.png	686140	1782528081.553163
+C:/Users/Adam/Desktop/محاسبات/static/company-logo-bar.png	21689	1782528081.4322307
+C:/Users/Adam/Desktop/Gemini_Generated_Image_6w6ka96w6ka96w6k.png	1732361	1782527919.160039
+C:/Users/Adam/Desktop/محاسبات/static/company-logo-solid.png	97094	1782527617.9075103
+C:/Users/Adam/Desktop/محاسبات/static/company-logo-transparent.png	576383	1782527617.8725305
+C:/Users/Adam/Desktop/محاسبات/static/company-logo-crop.png	649233	1782527579.5342684
+C:/Users/Adam/Desktop/محاسبات/static/company-logo.png	61472	1782527273.944289
+C:/Users/Adam/Desktop/محاسبات/.venv/Lib/site-packages/werkzeug/debug/shared/more.png	200	1782526738.6301265
+C:/Users/Adam/Desktop/محاسبات/.venv/Lib/site-packages/werkzeug/debug/shared/less.png	191	1782526738.620131
+C:/Users/Adam/Desktop/محاسبات/.venv/Lib/site-packages/werkzeug/debug/shared/console.png	507	1782526738.6031404
+C:/Users/Adam/Desktop/file (1).png	72410	1782526322.1417618
+C:/Users/Adam/Desktop/photo_2025-05-03_00-54-02.jpg	54271	1746478157.7073317
+C:/Users/Adam/Desktop/photo_2025-05-02_01-04-24.jpg	99359	1746137064.6135426
+C:/Users/Adam/Desktop/489032777_2094487214348968_9064359635671379791_n.jpg	223925	1744386057.4864209
+C:/Users/Adam/Desktop/Screenshot (169).png	179284	1734725299.685201
+C:/Users/Adam/Desktop/Screenshot (168).png	151683	1734724225.1755526
+C:/Users/Adam/Desktop/Screenshot (164).png	475597	1734358370.917524
+C:/Users/Adam/Desktop/81eOu-7X3RL._AC_SL1500_.jpg	235772	1721428162.2992506
+C:/Users/Adam/Desktop/Screenshot (152).png	292785	1719010190.9227347
+C:/Users/Adam/Desktop/7101177-uhd_3840_2160_30fps.00_00_00_00.Still001.jpg	2601532	1718900121.5122018
+C:/Users/Adam/Desktop/Screenshot (151).png	56731	1717967676.1390004
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Frame83.png	266870	1713020390.0
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/-10895825572079341036.jpg	172937	1712921322.1357517
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/-10883398902104546603.jpg	419740	1712921320.1819603
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/-10896227181748366603.jpg	228874	1712921319.9810755
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Frame 86.png	2338785	1712913488.0576355
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Frame 85.png	4942603	1712911346.2726798
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/612p03vaTgLds._AC_SL1200_.jpg	40693	1712910490.7025893
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Frame 83.png	579206	1712910123.8446963
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Frame 84.png	1918252	1712910113.9684103
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Mini-Rechargeable-Sealing-Machine-Hand-Pressure-Snack-Plastic-Bag-Heat-sealing-Device-Small-Household-Portable-Food_2024-04-12T08_19_23.836Z (1).png	2173636	1712910071.64836
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Mini-Rechargeable-Sealing-Machine-Hand-Pressure-Snack-Plastic-Bag-Heat-sealing-Device-Small-Household-Portable-Food_2024-04-12T08_19_23.836Z.png	2173636	1712910068.5892844
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/R.png	1264333	1712909688.420985
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/Mini-Rechargeable-Sealing-Machine-Hand-Pressure-Snack-Plastic-Bag-Heat-sealing-Device-Small-Household-Portable-Food.jpg_640x640 1 (1).png	412292	1712908097.8277233
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/72cf8987-9f68-43e0-8a5f-b9d80672c012.__CR0,0,300,300_PT0_SX300_V1___.jpg	102178	1712835628.506607
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/ae888d36-17bd-4feb-b67c-3e81e48717ee.__CR0,0,300,300_PT0_SX300_V1___.jpg	47198	1712835603.195678
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/a8e92131-100d-42fc-ba16-ffe1f92ba8e7.__CR0,0,300,300_PT0_SX300_V1___.jpg	77243	1712835598.420146
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/cc89971d-7d55-4ffa-abb7-1fc4dd97db7f.__CR0,0,970,600_PT0_SX970_V1___.jpg	470870	1712835587.5273886
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/c98ae193-4798-40f2-8e13-83eeab413346.__CR0,0,970,600_PT0_SX970_V1___.jpg	349830	1712835581.7974982
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/f6c1ff0f-daf2-440e-9d4b-29d4f88e9440.__CR0,0,970,600_PT0_SX970_V1___.jpg	293033	1712835575.526325
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/820de032-3e98-4c4e-aff4-3d2b11f24c8c.__CR0,0,970,600_PT0_SX970_V1___.jpg	446419	1712835568.1481528
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/75644258-702c-45e7-9a7e-d6c0edda2b75.__CR0,0,970,600_PT0_SX970_V1___.jpg	511988	1712835562.6208339
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/61qnQ2y69VL._AC_SL1200_.jpg	96961	1712828243.9090555
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/61yIeH5G5WL._AC_SL1200_.jpg	81431	1712828229.5492542
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/6131bS6M9+L._AC_SL1200_.jpg	90040	1712828215.5063639
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/71An6nM-2BL._AC_SL1200_.jpg	138784	1712828203.0149615
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/710T6uNY0HL._AC_SL1200_.jpg	153669	1712828192.7335272
+C:/Users/Adam/Desktop/Drop-shipping Files/mini bag sealer/612p03vaTgL._AC_SL1200_.jpg	77340	1712828157.5300455
+C:/Users/Adam/Desktop/Screenshot (128).png	53166	1712634476.6693773
+C:/Users/Adam/Desktop/New folder (3)/434390505_7528096220590291_8525029322610692692_n.jpg	1293084	1712229988.0074267
+C:/Users/Adam/Desktop/New folder (3)/434130774_7528096393923607_2795125954970355081_n.jpg	1037348	1712229983.2844694
+C:/Users/Adam/Desktop/New folder (3)/434382462_7528096567256923_1754649139135979780_n.jpg	1236493	1712229977.8250978
+C:/Users/Adam/Desktop/New folder (3)/434185937_7528096720590241_8126353394133649185_n.jpg	780858	1712229972.8908117
+C:/Users/Adam/Desktop/New folder (3)/434462542_7528096853923561_2004653582181410502_n.jpg	303473	1712229967.7689123
+C:/Users/Adam/Desktop/New folder (3)/434385634_7528096973923549_1633342819933853365_n.jpg	216969	1712229962.9212103
+C:/Users/Adam/Desktop/New folder (3)/434410221_7528095697257010_7234621996699337461_n.jpg	277058	1712229958.9718864
+C:/Users/Adam/Desktop/New folder (3)/434393615_7528095837256996_5906712790647997714_n.jpg	455239	1712229952.627386
+C:/Users/Adam/Desktop/New folder (3)/434402884_7528095993923647_6716953545882522630_n.jpg	296818	1712229945.985644
+C:/Users/Adam/Desktop/Drop-shipping Files/26 Pcs Non-Stick Silicone Cooking Utensils Spatula Set with Holder/381572321_627982152739639_1548989061038462305_n.jpg	60528	1711242768.4307387
+C:/Users/Adam/Desktop/Drop-shipping Files/clip on strainer/516F-gY-XhL.jpg	34581	1710980105.551548
