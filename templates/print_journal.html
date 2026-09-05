@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>قيد {{ entry.display_number }}</title>
+  <style>
+    body { font-family: Tahoma, Arial, sans-serif; padding: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: right; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="no-print"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+  <h1>قيد يومية {{ entry.display_number }}</h1>
+  <p>التاريخ: {{ entry.date or '-' }} — الحالة: {{ entry.status }} — المرجع: {{ entry.reference or '-' }}</p>
+  <p>البيان: {{ entry.description }}</p>
+  <table>
+    <thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ entry.debit_account.code if entry.debit_account else '' }} — {{ entry.debit_account.name if entry.debit_account else '-' }}</td>
+        <td>{{ entry.amount|groupnum }}</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>{{ entry.credit_account.code if entry.credit_account else '' }} — {{ entry.credit_account.name if entry.credit_account else '-' }}</td>
+        <td>0</td>
+        <td>{{ entry.amount|groupnum }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
