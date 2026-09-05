@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>طباعة مستخلص {{ payment.document_number }}</title>
+  <style>
+    body { font-family: Tahoma, Arial, sans-serif; padding: 24px; color: #111; }
+    h1 { font-size: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: right; }
+    .muted { color: #555; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="no-print"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+  <h1>مستخلص {{ payment.document_number }}</h1>
+  <p>المشروع: {{ payment.project.display_name if payment.project else '-' }}</p>
+  <p>
+    {% if payment.subcontractor %}مقاول الباطن: {{ payment.subcontractor.name }}
+    {% else %}العميل: {{ payment.project.client_name if payment.project else '-' }}{% endif %}
+  </p>
+  <p class="muted">التاريخ: {{ payment.date or '-' }}</p>
+  <table>
+    <thead><tr><th>البند</th><th>الوحدة</th><th>الكمية</th><th>سعر الفئة</th><th>الإجمالي</th></tr></thead>
+    <tbody>
+      {% for item in items %}
+        <tr>
+          <td>{{ item.description or (item.boq_item.name if item.boq_item else '-') }}</td>
+          <td>{{ item.unit or '-' }}</td>
+          <td>{{ item.quantity|groupnum }}</td>
+          <td>{{ item.unit_price|groupnum }}</td>
+          <td>{{ item.value|groupnum }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p>إجمالي الأعمال: {{ payment.total_value|groupnum }} — الاستقطاعات: {{ payment.deductions_total|groupnum }} — الصافي: {{ payment.net_value|groupnum }}</p>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>

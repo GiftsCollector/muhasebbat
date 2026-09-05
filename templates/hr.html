@@ -1,0 +1,337 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">الموارد البشرية</h2>
+          <p class="text-muted mb-0">حضور وانصراف واستقطاعات وزيادات ثم صافي المرتب. الترحيل يحمّل مصروف المرتبات، والصرف من الخزنة ينقص حساب الموظف فقط.</p>
+        </div>
+        <a class="btn btn-outline-primary" href="{{ url_for('employees') }}">أسماء الموظفين</a>
+      </div>
+      <form method="get" class="row g-2 mt-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label mb-1">شهر الكشف</label>
+          <input type="month" class="form-control" name="period_month" value="{{ period_month }}">
+        </div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary">عرض الشهر</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="glass-card p-3">
+      <div class="text-muted small">إجمالي صافي المرتبات</div>
+      <div class="fs-4 fw-bold">{{ totals.net|groupnum }}</div>
+      <div class="small text-muted">هذا الرقم هو الذي يُحمَّل على مصروف المرتبات</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="glass-card p-3">
+      <div class="text-muted small">رصيد مصروف المرتبات (Basic Salary)</div>
+      <div class="fs-4 fw-bold">{{ salary_expense_balance|groupnum }}</div>
+      <div class="small text-muted">{{ salary_expense.code if salary_expense else 'EXP-SAL' }} — لا ينقص عند الصرف</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="glass-card p-3">
+      <div class="text-muted small">متبقي للموظفين</div>
+      <div class="fs-4 fw-bold">{{ totals.remaining|groupnum }}</div>
+      <div class="small text-muted">بعد الاستحقاق ناقص ما صُرف من الخزنة</div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4">
+      <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-attendance" type="button">الحضور والانصراف</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-payroll" type="button">كشف المرتبات</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-pay" type="button">صرف من الخزنة</button></li>
+      </ul>
+
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="tab-attendance">
+          <form method="post" class="row g-2 align-items-end mb-4">
+            <input type="hidden" name="action" value="attendance">
+            <input type="hidden" name="period_month" value="{{ period_month }}">
+            <div class="col-md-3">
+              <label class="form-label">الموظف</label>
+              <select class="form-select js-searchable-select" name="employee_id" required>
+                <option value="">اختر</option>
+                {% for item in employees %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ today_date }}"></div>
+            <div class="col-md-2">
+              <label class="form-label">الحالة</label>
+              <select class="form-select" name="status">
+                {% for status in attendance_statuses %}<option>{{ status }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-1"><label class="form-label">حضور</label><input type="time" class="form-control" name="check_in"></div>
+            <div class="col-md-1"><label class="form-label">انصراف</label><input type="time" class="form-control" name="check_out"></div>
+            <div class="col-md-1"><label class="form-label">تأخير د</label><input type="number" step="1" class="form-control" name="delay_minutes" value="0"></div>
+            <div class="col-md-1"><label class="form-label">استئذان س</label><input type="number" step="0.25" class="form-control" name="permission_hours" value="0"></div>
+            <div class="col-md-12"><label class="form-label">ملاحظة</label><input class="form-control" name="notes"></div>
+            <div class="col-md-3 d-grid"><button class="btn btn-cyan">حفظ الحضور</button></div>
+          </form>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead><tr><th>التاريخ</th><th>الموظف</th><th>الحالة</th><th>حضور</th><th>انصراف</th><th>تأخير</th><th>استئذان</th><th></th></tr></thead>
+              <tbody>
+                {% for item in attendance_rows %}
+                  <tr>
+                    <td>{{ item.date }}</td>
+                    <td>{{ item.employee.display_name if item.employee else '-' }}</td>
+                    <td>{{ item.status }}</td>
+                    <td>{{ item.check_in or '-' }}</td>
+                    <td>{{ item.check_out or '-' }}</td>
+                    <td>{{ item.delay_minutes or 0 }}</td>
+                    <td>{{ item.permission_hours or 0 }}</td>
+                    <td class="text-nowrap">
+                      <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editAtt{{ item.id }}">تعديل</button>
+                      <form method="post" action="{{ url_for('delete_attendance', row_id=item.id) }}" class="d-inline" onsubmit="return confirm('حذف سجل الحضور؟');">
+                        <button class="btn btn-sm btn-outline-danger">حذف</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="8" class="text-center text-muted">لا توجد حركة حضور في هذا الشهر.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="tab-payroll">
+          <form method="post">
+            <input type="hidden" name="period_month" value="{{ period_month }}">
+            <div class="row g-2 mb-3 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label">تاريخ قيد الاستحقاق</label>
+                <input type="date" class="form-control" name="posting_date" value="{{ posting_date }}">
+              </div>
+              <div class="col-md-9 d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-primary" name="action" value="save_payroll">حفظ مسودة</button>
+                <button class="btn btn-cyan" name="action" value="post_payroll">ترحيل إلى مصروف المرتبات</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>الموظف</th>
+                    <th>حضور</th>
+                    <th>إجازة</th>
+                    <th>أساسي</th>
+                    <th>إضافي</th>
+                    <th>حوافز</th>
+                    <th>تأخير</th>
+                    <th>استئذان</th>
+                    <th>خصم</th>
+                    <th>سلف</th>
+                    <th>صافي</th>
+                    <th>متبقي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in payroll_rows %}
+                    <tr>
+                      <td>
+                        <input type="hidden" name="employee_id" value="{{ row.employee.id }}">
+                        <strong>{{ row.employee.display_name }}</strong>
+                        <div class="small text-muted">{{ row.status }}</div>
+                        {% with account_id=row.account_id %}{% include '_statement_btn.html' %}{% endwith %}
+                      </td>
+                      <td><input type="number" step="0.5" class="form-control form-control-sm" name="work_days" value="{{ row.work_days or 0 }}"></td>
+                      <td><input type="number" step="0.5" class="form-control form-control-sm" name="vacation_days" value="{{ row.vacation_days or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="basic_salary" value="{{ row.basic_salary or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="overtime" value="{{ row.overtime or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="incentives" value="{{ row.incentives or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="delay_deduction" value="{{ row.delay_deduction or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="permission_deduction" value="{{ row.permission_deduction or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="other_deductions" value="{{ row.other_deductions or 0 }}"></td>
+                      <td><input type="number" step="0.01" class="form-control form-control-sm js-pay" name="advances" value="{{ row.advances or 0 }}"></td>
+                      <td class="js-net fw-bold">{{ row.net|groupnum }}</td>
+                      <td>{{ row.remaining|groupnum }}</td>
+                    </tr>
+                  {% else %}
+                    <tr><td colspan="12" class="text-center text-muted">أضف موظفين أولًا من صفحة الموظفين.</td></tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot>
+                  <tr class="fw-bold">
+                    <td>الإجمالي</td>
+                    <td colspan="2"></td>
+                    <td>{{ totals.basic_salary|groupnum }}</td>
+                    <td>{{ totals.overtime|groupnum }}</td>
+                    <td>{{ totals.incentives|groupnum }}</td>
+                    <td>{{ totals.delay_deduction|groupnum }}</td>
+                    <td>{{ totals.permission_deduction|groupnum }}</td>
+                    <td>{{ totals.other_deductions|groupnum }}</td>
+                    <td>{{ totals.advances|groupnum }}</td>
+                    <td>{{ totals.net|groupnum }}</td>
+                    <td>{{ totals.remaining|groupnum }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </form>
+        </div>
+
+        <div class="tab-pane fade" id="tab-pay">
+          <div class="row g-4">
+            <div class="col-lg-5">
+              <h5 class="mb-3">صرف مرتب</h5>
+              <p class="text-muted small">مدين حساب الموظف — دائن الخزنة. مصروف المرتبات لا يتأثر.</p>
+              <form method="post">
+                <input type="hidden" name="action" value="pay_salary">
+                <input type="hidden" name="period_month" value="{{ period_month }}">
+                <div class="mb-3">
+                  <label class="form-label">الموظف</label>
+                  <select class="form-select js-searchable-select" name="employee_id" required>
+                    <option value="">اختر</option>
+                    {% for item in employees %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="row g-2 mb-3">
+                  <div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ today_date }}"></div>
+                  <div class="col-md-6"><label class="form-label">المبلغ</label><input type="number" step="0.01" min="0.01" class="form-control" name="amount" required></div>
+                </div>
+                <div class="row g-2 mb-3">
+                  <div class="col-md-6">
+                    <label class="form-label">طريقة الصرف</label>
+                    <select class="form-select" name="payment_method"><option>نقدي</option><option>بنكي</option></select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">الخزنة</label>
+                    <select class="form-select js-searchable-select" name="treasury_account_id">
+                      {% for account in treasury_accounts %}<option value="{{ account.id }}">{{ account.code }} - {{ account.name }}</option>{% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="mb-3"><label class="form-label">المرجع</label><input class="form-control" name="reference"></div>
+                <div class="mb-3"><label class="form-label">ملاحظات</label><input class="form-control" name="notes"></div>
+                <button class="btn btn-cyan">تسجيل الصرف</button>
+              </form>
+            </div>
+            <div class="col-lg-7">
+              <h5 class="mb-3">حركة الصرف في الشهر</h5>
+              <table class="table table-hover align-middle">
+                <thead><tr><th>الرقم</th><th>التاريخ</th><th>الموظف</th><th>المبلغ</th><th></th></tr></thead>
+                <tbody>
+                  {% for item in payments %}
+                    <tr>
+                      <td>{{ item.document_number }}</td>
+                      <td>{{ item.date or '-' }}</td>
+                      <td>{{ item.employee.display_name if item.employee else '-' }}</td>
+                      <td>{{ item.amount|groupnum }}</td>
+                      <td class="text-nowrap">
+                        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editPay{{ item.id }}">تعديل</button>
+                        <form method="post" action="{{ url_for('delete_operating_document', entity_type='employee_salary_payment', entity_id=item.id) }}" class="d-inline" onsubmit="return confirm('سيتم حذف الصرف من الخزنة ومن حساب الموظف معًا. متابعة؟');">
+                          <button class="btn btn-sm btn-outline-danger">حذف</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% else %}
+                    <tr><td colspan="5" class="text-center text-muted">لا توجد صرفيات في هذا الشهر.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for item in attendance_rows %}
+  <div class="modal fade" id="editAtt{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('update_attendance', row_id=item.id) }}">
+          <div class="modal-header"><h5 class="modal-title">تعديل حضور</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date }}"></div>
+            <div class="mb-3">
+              <label class="form-label">الحالة</label>
+              <select class="form-select" name="status">
+                {% for status in attendance_statuses %}<option {% if item.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col"><label class="form-label">حضور</label><input type="time" class="form-control" name="check_in" value="{{ item.check_in or '' }}"></div>
+              <div class="col"><label class="form-label">انصراف</label><input type="time" class="form-control" name="check_out" value="{{ item.check_out or '' }}"></div>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col"><label class="form-label">تأخير د</label><input type="number" class="form-control" name="delay_minutes" value="{{ item.delay_minutes or 0 }}"></div>
+              <div class="col"><label class="form-label">استئذان س</label><input type="number" step="0.25" class="form-control" name="permission_hours" value="{{ item.permission_hours or 0 }}"></div>
+            </div>
+            <div class="mb-0"><label class="form-label">ملاحظة</label><input class="form-control" name="notes" value="{{ item.notes or '' }}"></div>
+          </div>
+          <div class="modal-footer"><button class="btn btn-cyan">حفظ</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+{% for item in payments %}
+  <div class="modal fade" id="editPay{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('update_employee_salary_payment', payment_id=item.id) }}">
+          <div class="modal-header"><h5 class="modal-title">تعديل صرف</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">الموظف</label>
+              <select class="form-select" name="employee_id">
+                {% for emp in employees %}<option value="{{ emp.id }}" {% if emp.id == item.employee_id %}selected{% endif %}>{{ emp.display_name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div>
+              <div class="col"><label class="form-label">المبلغ</label><input type="number" step="0.01" class="form-control" name="amount" value="{{ item.amount or 0 }}"></div>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col">
+                <label class="form-label">طريقة الصرف</label>
+                <select class="form-select" name="payment_method">
+                  <option {% if item.payment_method == 'نقدي' %}selected{% endif %}>نقدي</option>
+                  <option {% if item.payment_method == 'بنكي' %}selected{% endif %}>بنكي</option>
+                </select>
+              </div>
+              <div class="col">
+                <label class="form-label">الخزنة</label>
+                <select class="form-select" name="treasury_account_id">
+                  {% for account in treasury_accounts %}<option value="{{ account.id }}" {% if account.id == item.treasury_account_id %}selected{% endif %}>{{ account.code }} - {{ account.name }}</option>{% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="mb-3"><label class="form-label">المرجع</label><input class="form-control" name="reference" value="{{ item.reference or '' }}"></div>
+            <div class="mb-0"><label class="form-label">ملاحظات</label><input class="form-control" name="notes" value="{{ item.notes or '' }}"></div>
+          </div>
+          <div class="modal-footer"><button class="btn btn-cyan">حفظ</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+<script>
+  function rowNet(tr) {
+    const num = (name) => parseFloat((tr.querySelector(`[name="${name}"]`) || {}).value || 0) || 0;
+    return (num('basic_salary') + num('overtime') + num('incentives')) - (num('delay_deduction') + num('permission_deduction') + num('other_deductions') + num('advances'));
+  }
+  document.querySelectorAll('#tab-payroll tbody tr').forEach((tr) => {
+    tr.querySelectorAll('.js-pay').forEach((input) => {
+      input.addEventListener('input', () => {
+        const cell = tr.querySelector('.js-net');
+        if (cell) cell.textContent = rowNet(tr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      });
+    });
+  });
+</script>
+{% endblock %}
