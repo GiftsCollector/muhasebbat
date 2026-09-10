@@ -1,0 +1,32 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row justify-content-center fade-up">
+  <div class="col-lg-6 col-md-9">
+    <div class="glass-card p-4 shadow-sm">
+      <h3 class="section-title mb-3">إعداد حساب المدير</h3>
+      <p class="text-muted mb-4">هذه الخطوة تتم مرة واحدة لإنشاء أول حساب مدير للنظام.</p>
+      <form method="post" class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">اسم المستخدم</label>
+          <input class="form-control" name="username" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">الاسم الكامل</label>
+          <input class="form-control" name="full_name" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">كلمة المرور</label>
+          <input type="password" class="form-control" name="password" required minlength="6">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">تأكيد كلمة المرور</label>
+          <input type="password" class="form-control" name="confirm_password" required minlength="6">
+        </div>
+        <div class="col-12 d-grid">
+          <button class="btn btn-cyan btn-lg">إنشاء حساب المدير</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

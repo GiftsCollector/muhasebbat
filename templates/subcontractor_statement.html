@@ -1,0 +1,271 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">كشف حساب مقاول باطن / مورد</h2>
+          <p class="text-muted mb-1">{{ subcontractor.display_code }} - {{ subcontractor.name }}</p>
+          <div class="small text-muted">تصنيف جهة التعامل: {{ subcontractor.entity_kind }}</div>
+          <div class="small text-muted">{{ subcontractor.contact_info or 'بدون بيانات اتصال' }}</div>
+          {% if party_account %}
+            <div class="small text-muted mt-1">الحساب المرتبط: {{ party_account.code }} - {{ party_account.name }} (رصيد الدفتر: {{ account_balance|groupnum }})</div>
+          {% else %}
+            <div class="small text-warning mt-1">لا يوجد حساب مرتبط في دليل الحسابات بعد.</div>
+          {% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('subcontractors') }}">العودة للقائمة</a>
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('print_document', doc_type='statement', doc_id=subcontractor.id) }}">طباعة / PDF</a>
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('progress_payments') }}">مستخلص جديد</a>
+          <button class="btn btn-cyan btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#advanceModal">دفعة تحت الحساب</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي الأعمال المنفذة</div><div class="h5 mb-0">{{ statement.total_works|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">الدفعات المسددة تحت الحساب</div><div class="h5 mb-0">{{ statement.total_paid|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">الاستقطاعات والخصومات</div><div class="h5 mb-0">{{ statement.total_deductions|groupnum }}</div></div></div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">الرصيد المتبقي (صافي المستحق)</div>
+          <div class="h5 mb-0 {% if statement.net_due < 0 %}text-danger{% endif %}">{{ statement.net_due|groupnum }}</div>
+          <div class="small text-muted mt-1">{{ statement.total_works|groupnum }} − ({{ statement.total_paid|groupnum }} + {{ statement.total_deductions|groupnum }})</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">حركة الحساب</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead>
+            <tr><th>التاريخ</th><th>المصدر</th><th>المرجع</th><th>البيان</th><th>مستحق (دائن)</th><th>مسدد/مخصوم (مدين)</th><th>الرصيد</th></tr>
+          </thead>
+          <tbody>
+            {% for movement in statement.movements %}
+              <tr>
+                <td>{{ movement.date or '-' }}</td>
+                <td><span class="badge bg-secondary-subtle text-secondary-emphasis">{{ movement.source }}</span></td>
+                <td>{{ movement.reference }}</td>
+                <td>{{ movement.description }}</td>
+                <td>{{ movement.credit|groupnum }}</td>
+                <td>{{ movement.debit|groupnum }}</td>
+                <td class="fw-semibold">{{ movement.running_balance|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="text-center text-muted">لا توجد حركات على هذا الحساب.</td></tr>
+            {% endfor %}
+            <tr class="table-light">
+              <td colspan="6" class="text-end fw-semibold">الرصيد المتبقي النهائي</td>
+              <td class="fw-bold">{{ statement.net_due|groupnum }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">المستخلصات</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>رقم</th><th>التاريخ</th><th>المشروع</th><th>إجمالي الأعمال</th><th>الاستقطاعات</th><th>الصافي</th><th></th></tr></thead>
+          <tbody>
+            {% for item in statement.payments %}
+              <tr>
+                <td>{{ item.document_number }}</td>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ item.project.display_name if item.project else '-' }}</td>
+                <td>{{ item.total_value|groupnum }}</td>
+                <td>{{ item.deductions_total|groupnum }}</td>
+                <td>{{ item.net_value|groupnum }}</td>
+                <td><a class="btn btn-sm btn-outline-info" href="{{ url_for('progress_payment_detail', payment_id=item.id) }}">تفاصيل</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="text-center text-muted">لا توجد مستخلصات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">الدفعات تحت الحساب</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>المرجع</th><th>الطريقة</th><th>المبلغ</th><th></th></tr></thead>
+          <tbody>
+            {% for item in statement.advances %}
+              <tr>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ item.reference or '-' }}</td>
+                <td>{{ item.payment_method }}</td>
+                <td>{{ item.amount|groupnum }}</td>
+                <td class="text-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-info js-edit-advance"
+                    data-action="{{ url_for('update_subcontractor_payment', payment_id=item.id) }}"
+                    data-project-id="{{ item.project_id or '' }}"
+                    data-date="{{ item.date or '' }}"
+                    data-amount="{{ item.amount or 0 }}"
+                    data-method="{{ item.payment_method or 'نقدي' }}"
+                    data-treasury-id="{{ item.treasury_account_id or '' }}"
+                    data-reference="{{ item.reference or '' }}"
+                  >تعديل</button>
+                  <form method="post" action="{{ url_for('delete_operating_document', entity_type='subcontractor_payment', entity_id=item.id) }}" class="d-inline"
+                        onsubmit="return confirm('سيتم حذف الدفعة من الخزنة ومن حساب المقاول معًا. متابعة؟');">
+                    <input type="hidden" name="redirect_to" value="subcontractor_statement">
+                    <button class="btn btn-sm btn-outline-danger">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted">لا توجد دفعات</td></tr>
+            {% endfor %}
+            <tr class="table-light">
+              <td colspan="3" class="text-end fw-semibold">الإجمالي</td>
+              <td class="fw-bold">{{ statement.total_paid|groupnum }}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="advanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('create_subcontractor_payment') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">دفعة تحت الحساب - {{ subcontractor.name }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="subcontractor_id" value="{{ subcontractor.id }}">
+          <input type="hidden" name="redirect_to" value="subcontractor_statement">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">المشروع</label>
+              <select class="form-select" name="project_id">
+                <option value="">-- بدون مشروع --</option>
+                {% for item in projects %}
+                  <option value="{{ item.id }}">{{ item.display_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">التاريخ</label>
+              <input type="date" class="form-control" name="date" value="{{ today_date }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">المبلغ</label>
+              <input type="number" step="0.01" min="0" class="form-control" name="amount" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">طريقة الصرف</label>
+              <select class="form-select" name="payment_method">
+                <option value="نقدي">نقدي</option>
+                <option value="بنكي">بنكي</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">الخزنة</label>
+              <select class="form-select js-searchable-select" name="treasury_account_id" required>
+                {% for acc in treasury_accounts %}
+                  <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6"><label class="form-label">المرجع</label><input class="form-control" name="reference"></div>
+            <div class="col-md-6"><label class="form-label">ملاحظات</label><input class="form-control" name="notes"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+          <button type="submit" class="btn btn-cyan">حفظ الدفعة</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="editAdvanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="editAdvanceForm">
+        <input type="hidden" name="redirect_to" value="subcontractor_statement">
+        <div class="modal-header">
+          <h5 class="modal-title">تعديل دفعة تحت الحساب</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info">التعديل يحدّث حساب المقاول وحساب الخزنة معًا.</div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">المشروع</label>
+              <select class="form-select" name="project_id" id="editAdvProject">
+                <option value="">-- بدون مشروع --</option>
+                {% for item in projects %}
+                  <option value="{{ item.id }}">{{ item.display_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" id="editAdvDate"></div>
+            <div class="col-md-4"><label class="form-label">المبلغ</label><input type="number" step="0.01" min="0.01" class="form-control" name="amount" id="editAdvAmount" required></div>
+            <div class="col-md-4">
+              <label class="form-label">طريقة الصرف</label>
+              <select class="form-select" name="payment_method" id="editAdvMethod">
+                <option value="نقدي">نقدي</option>
+                <option value="بنكي">بنكي</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">الخزنة</label>
+              <select class="form-select js-searchable-select" name="treasury_account_id" id="editAdvTreasury">
+                {% for acc in treasury_accounts %}
+                  <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12"><label class="form-label">المرجع</label><input class="form-control" name="reference" id="editAdvRef"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+          <button class="btn btn-cyan">حفظ التعديل</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    const modalEl = document.getElementById('editAdvanceModal');
+    if (!modalEl || !window.bootstrap) return;
+    const modal = new bootstrap.Modal(modalEl);
+    document.querySelectorAll('.js-edit-advance').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.getElementById('editAdvanceForm').action = btn.dataset.action;
+        document.getElementById('editAdvProject').value = btn.dataset.projectId || '';
+        document.getElementById('editAdvDate').value = btn.dataset.date || '';
+        document.getElementById('editAdvAmount').value = btn.dataset.amount || '';
+        document.getElementById('editAdvMethod').value = btn.dataset.method || 'نقدي';
+        document.getElementById('editAdvTreasury').value = btn.dataset.treasuryId || '';
+        document.getElementById('editAdvRef').value = btn.dataset.reference || '';
+        modal.show();
+      });
+    });
+  })();
+</script>
+{% endblock %}

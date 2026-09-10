@@ -1,0 +1,10 @@
+<label class="form-label">العميل</label>
+<select class="form-select mb-2" name="client_name">
+  <option value="">— اختر عميلاً مسجّلاً —</option>
+  {% for name in client_names %}
+    <option value="{{ name }}" {% if selected_client == name %}selected{% endif %}>{{ name }}</option>
+  {% endfor %}
+</select>
+<label class="form-label">أو عميل جديد</label>
+<input class="form-control" name="client_name_new" placeholder="يُستخدم إن وُجد بدل القائمة" value="">
+<div class="form-text mb-2">اختر من القائمة لتفادي تكرار الحساب، أو اكتب اسمًا جديدًا مرة واحدة.</div>
