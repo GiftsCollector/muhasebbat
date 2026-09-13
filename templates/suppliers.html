@@ -1,0 +1,228 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">الموردون</h2>
+          <p class="text-muted">أضف الموردين وتمتع بواجهة عمل منظمة لتتبع بيانات الاتصال والملاحظات.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي الموردين: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#single-pane" role="tab">إدخال فردي</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#batch-pane" role="tab">إدخال جماعي</button></li>
+      </ul>
+      
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="single-pane" role="tabpanel">
+          <h5 class="mb-4">إضافة مورد واحد</h5>
+          <form method="post">
+            <div class="mb-3"><label class="form-label">اسم المورد</label><input class="form-control" name="name" required></div>
+            <div class="mb-3"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info"></div>
+            <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+            <button class="btn btn-cyan">حفظ المورد</button>
+          </form>
+        </div>
+
+        <div class="tab-pane fade" id="batch-pane" role="tabpanel">
+          <h5 class="mb-3">إدخال جماعي للموردين (مثل جدول Excel)</h5>
+          <p class="text-muted small mb-3">أضف عدة موردين في جدول واحد واحفظهم جميعاً دفعة واحدة.</p>
+          
+          <div class="mb-3">
+            <button type="button" id="batchAddBtn" class="btn btn-sm btn-outline-success">+ إضافة صف</button>
+            <button type="button" id="batchDelBtn" class="btn btn-sm btn-outline-danger">- حذف آخر صف</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-borderless align-middle">
+              <thead>
+                <tr><th>#</th><th>الاسم</th><th>الاتصال</th><th>الملاحظات</th><th>✕</th></tr>
+              </thead>
+              <tbody id="batchRows">
+                <!-- Rows will be added by JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-3">
+            <button type="button" id="batchClearBtn" class="btn btn-sm btn-outline-warning">مسح الجدول</button>
+            <button type="button" id="batchSaveBtn" class="btn btn-sm btn-cyan float-end">💾 حفظ الكل</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const batchRowsContainer = document.getElementById('batchRows');
+      const batchAddBtn = document.getElementById('batchAddBtn');
+      const batchDelBtn = document.getElementById('batchDelBtn');
+      const batchClearBtn = document.getElementById('batchClearBtn');
+      const batchSaveBtn = document.getElementById('batchSaveBtn');
+
+      function createRow(index) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${index + 1}</td>
+          <td><input type="text" class="form-control form-control-sm" name="batch_name" value=""></td>
+          <td><input type="text" class="form-control form-control-sm" name="batch_contact_info" value=""></td>
+          <td><input type="text" class="form-control form-control-sm" name="batch_notes" value=""></td>
+          <td><button type="button" class="btn btn-sm btn-danger delete-row-btn">✕</button></td>
+        `;
+        row.querySelector('.delete-row-btn').addEventListener('click', () => {
+          row.remove();
+          updateRowNumbers();
+        });
+        return row;
+      }
+
+      function updateRowNumbers() {
+        document.querySelectorAll('#batchRows tr').forEach((row, idx) => {
+          row.cells[0].textContent = idx + 1;
+        });
+      }
+
+      batchAddBtn.addEventListener('click', () => {
+        const index = batchRowsContainer.children.length;
+        batchRowsContainer.appendChild(createRow(index));
+      });
+
+      batchDelBtn.addEventListener('click', () => {
+        if (batchRowsContainer.children.length > 0) {
+          batchRowsContainer.lastElementChild.remove();
+          updateRowNumbers();
+        }
+      });
+
+      batchClearBtn.addEventListener('click', () => {
+        batchRowsContainer.innerHTML = '';
+      });
+
+      batchSaveBtn.addEventListener('click', async () => {
+        const formData = new FormData();
+        formData.append('batch_mode', 'true');
+        
+        document.querySelectorAll('#batchRows tr').forEach((row, i) => {
+          const name = row.querySelector('input[name="batch_name"]').value;
+          const contact = row.querySelector('input[name="batch_contact_info"]').value;
+          const notes = row.querySelector('input[name="batch_notes"]').value;
+          formData.append('batch_name', name);
+          formData.append('batch_contact_info', contact);
+          formData.append('batch_notes', notes);
+        });
+
+        try {
+          const response = await fetch('{{ url_for("suppliers") }}', {
+            method: 'POST',
+            body: formData
+          });
+          if (response.ok) {
+            location.reload();
+          } else {
+            alert('حدث خطأ في الحفظ');
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('خطأ في الاتصال');
+        }
+      });
+
+      // Initialize with 5 empty rows
+      for (let i = 0; i < 5; i++) {
+        batchRowsContainer.appendChild(createRow(i));
+      }
+    </script>
+  </div>
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة الموردين</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-8">
+          <input id="suppSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في اسم المورد أو الاتصال">
+        </div>
+        <div class="col-lg-4">
+          <button id="suppResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا يوجد موردون حتى الآن. أضف موردًا جديدًا قبل تسجيل أوامر الشراء.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="suppTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>الاسم</th><th>الاتصال</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in items %}
+              <tr data-search="{{ item.name }} {{ item.contact_info }}">
+                <td>{{ item.name }}</td>
+                <td>{{ item.contact_info or '-' }}</td>
+                <td>{{ item.notes or '-' }}</td>
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    <a class="btn btn-sm btn-cyan" href="{{ url_for('supplier_statement', supplier_id=item.id) }}">كشف حساب</a>
+                    <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editSupplier{{ item.id }}">تعديل</button>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="text-center text-muted">لا يوجد موردون</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in items %}
+        <div class="modal fade" id="editSupplier{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_supplier', supplier_id=item.id) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل المورد {{ item.name }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3"><label class="form-label">اسم المورد</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                  <div class="mb-3"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info" value="{{ item.contact_info or '' }}"></div>
+                  <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes">{{ item.notes or '' }}</textarea></div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('suppTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('suppSearch');
+    const resetBtn = document.getElementById('suppResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const matches = !searchText || rowText.includes(searchText);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}

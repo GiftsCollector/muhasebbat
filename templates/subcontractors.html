@@ -1,0 +1,177 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">مقاولو الباطن والموردون</h2>
+          <p class="text-muted mb-0">
+            يُعامل مقاول الباطن في الهيكل المالي كمورد، ويُقسم التعامل إلى: مقاول تنفيذي (مصنعية ومعدات/عمالة)،
+            مورد توريد مواد بناء، ومورد تقديم وتمرير خدمات.
+          </p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">عدد الجهات: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة جهة تعامل</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">اسم المقاول / المورد</label><input class="form-control" name="name" required></div>
+        <div class="mb-3">
+          <label class="form-label">كود المقاول</label>
+          <input class="form-control" name="code" placeholder="تلقائي إن تُرك فارغًا">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">تصنيف جهة التعامل</label>
+          <select class="form-select" name="entity_kind">
+            {% for kind in entity_kind_options %}
+              <option value="{{ kind }}">{{ kind }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info"></div>
+        <div class="mb-3"><label class="form-label">قيمة العقد</label><input type="number" step="0.01" class="form-control" name="contract_value" value="0"></div>
+        <div class="row g-3">
+          <div class="col-md-4"><label class="form-label">خصم %</label><input type="number" step="0.01" class="form-control" name="discount_percentage" value="0"></div>
+          <div class="col-md-4"><label class="form-label">ضمان %</label><input type="number" step="0.01" class="form-control" name="retention_percentage" value="0"></div>
+          <div class="col-md-4"><label class="form-label">ضرائب %</label><input type="number" step="0.01" class="form-control" name="tax_percentage" value="0"></div>
+        </div>
+        <div class="form-text mt-2 mb-3">نسب الضمان والضرائب تُطبَّق تلقائيًا على مستخلصات هذه الجهة.</div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
+        <button class="btn btn-cyan">حفظ الجهة</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة جهات التعامل</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-5">
+          <input id="subSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في الاسم أو الكود">
+        </div>
+        <div class="col-lg-4">
+          <select id="subKind" class="form-select form-select-sm">
+            <option value="">-- كل التصنيفات --</option>
+            {% for kind in entity_kind_options %}
+              <option value="{{ kind }}">{{ kind }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button id="subResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا توجد جهات تعامل حاليًا. أضف مقاول باطن أو موردًا لتبدأ في ربط المستخلصات به.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="subTable" class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>الكود</th>
+              <th>الاسم</th>
+              <th>التصنيف</th>
+              <th>الأعمال المنفذة</th>
+              <th>المسدد</th>
+              <th>الرصيد المتبقي</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+              {% set summary = statement_summaries.get(item.id, {}) %}
+              <tr data-search="{{ item.name }} {{ item.display_code }}" data-kind="{{ item.entity_kind }}">
+                <td>{{ item.display_code }}</td>
+                <td>{{ item.name }}</td>
+                <td><span class="badge bg-secondary-subtle text-secondary-emphasis">{{ item.entity_kind }}</span></td>
+                <td>{{ summary.get('total_works', 0)|groupnum }}</td>
+                <td>{{ summary.get('total_paid', 0)|groupnum }}</td>
+                <td class="fw-semibold">{{ summary.get('net_due', 0)|groupnum }}</td>
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-outline-light" href="{{ url_for('subcontractor_statement', subcontractor_id=item.id) }}">كشف حساب</a>
+                  <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editSub{{ item.id }}">تعديل</button>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="text-center text-muted">لا توجد جهات تعامل</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in items %}
+        <div class="modal fade" id="editSub{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_subcontractor', subcontractor_id=item.id) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل {{ item.name }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">الاسم</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                    <div class="col-md-6"><label class="form-label">الكود</label><input class="form-control" name="code" value="{{ item.code or '' }}"></div>
+                    <div class="col-md-6">
+                      <label class="form-label">تصنيف جهة التعامل</label>
+                      <select class="form-select" name="entity_kind">
+                        {% for kind in entity_kind_options %}
+                          <option value="{{ kind }}" {% if item.entity_kind == kind %}selected{% endif %}>{{ kind }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-md-6"><label class="form-label">بيانات الاتصال</label><input class="form-control" name="contact_info" value="{{ item.contact_info or '' }}"></div>
+                    <div class="col-md-6"><label class="form-label">قيمة العقد</label><input type="number" step="0.01" class="form-control" name="contract_value" value="{{ item.contract_value }}"></div>
+                    <div class="col-md-6"><label class="form-label">خصم %</label><input type="number" step="0.01" class="form-control" name="discount_percentage" value="{{ item.discount_percentage }}"></div>
+                    <div class="col-md-6"><label class="form-label">ضمان %</label><input type="number" step="0.01" class="form-control" name="retention_percentage" value="{{ item.retention_percentage or 0 }}"></div>
+                    <div class="col-md-6"><label class="form-label">ضرائب %</label><input type="number" step="0.01" class="form-control" name="tax_percentage" value="{{ item.tax_percentage or 0 }}"></div>
+                    <div class="col-12"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes" rows="2">{{ item.notes or '' }}</textarea></div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('subTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('subSearch');
+    const kindSelect = document.getElementById('subKind');
+    const resetBtn = document.getElementById('subResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const kind = kindSelect?.value || '';
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowKind = row.dataset.kind || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!kind || rowKind === kind);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    kindSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (kindSelect) kindSelect.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}
