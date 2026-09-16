@@ -1,0 +1,73 @@
+/* حركة خفيفة: CSS فقط، خصائص مركّبة (opacity/transform)، من غير فلتر ولا سكربت */
+
+.fade-up {
+  animation: motionIn 0.28s ease both;
+}
+
+.alert.fade.show {
+  animation: motionIn 0.28s ease both;
+}
+
+@keyframes motionIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.side-link {
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.side-link:hover {
+  transform: translateX(-2px);
+}
+
+.side-link.active {
+  transform: none;
+}
+
+.today-action,
+.dashboard-page .quick-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.today-action:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px rgba(16, 40, 80, 0.18);
+}
+
+.today-statement:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.dashboard-page .quick-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(19, 44, 89, 0.1);
+}
+
+.searchable-select-menu {
+  animation: motionIn 0.16s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up,
+  .alert.fade.show,
+  .searchable-select-menu {
+    animation: none !important;
+  }
+
+  .btn:hover,
+  .side-link:hover,
+  .today-action:hover,
+  .dashboard-page .quick-card:hover {
+    transform: none !important;
+  }
+}
