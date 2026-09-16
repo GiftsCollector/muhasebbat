@@ -1,0 +1,367 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row g-3 fade-up screen-stack">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">أوامر الشراء</h2>
+          <p class="text-muted mb-0">الأمر المفتوح طلب فقط. الإغلاق أو السداد يستلم الأصناف في المخزن ويقيّدها على المورد. السداد النقدي من شاشة سداد الموردين.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">أجمالي الأوامر: {{ items|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">أمر شراء جديد</h5>
+      <form method="post" enctype="multipart/form-data" class="po-form">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">المشروع</label>
+            <select class="form-select js-searchable-select" name="project_id" required>
+              <option value="">اختر المشروع</option>
+              {% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">المورد</label>
+            <select class="form-select js-searchable-select" name="supplier_id" required>
+              <option value="">اختر المورد</option>
+              {% for item in suppliers %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">المخزن</label>
+            <input class="form-control" name="warehouse_name" list="warehouseOptions" value="{{ default_warehouse }}" placeholder="{{ default_warehouse }}">
+          </div>
+          <div class="col-md-3"><label class="form-label">رقم الطلب</label><input class="form-control" name="order_number"></div>
+          <div class="col-md-3"><label class="form-label">رقم الفاتورة</label><input class="form-control" name="invoice_number"></div>
+          <div class="col-md-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ today_date }}"></div>
+          <div class="col-md-3">
+            <label class="form-label">الحالة</label>
+            <select class="form-select" name="status">
+              {% for status in status_options %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <h6 class="mt-4 mb-2">أصناف الأمر</h6>
+        <div class="table-responsive">
+          <table class="table table-borderless align-middle mb-2 po-lines-table">
+            <thead>
+              <tr>
+                <th style="min-width:180px">الصنف</th>
+                <th style="min-width:110px">الوحدة</th>
+                <th style="min-width:90px">الكمية</th>
+                <th style="min-width:90px">السعر</th>
+                <th style="min-width:90px">الخصم</th>
+                <th style="min-width:110px">القيمة</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody class="po-lines-body">
+              <tr class="po-line-row">
+                <td>
+                  <input class="form-control po-item-name" name="item_name" list="materialOptions" placeholder="اسم الصنف">
+                </td>
+                <td>
+                  <select class="form-select form-select-sm js-searchable-select" name="unit">
+                    <option value="">—</option>
+                    {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td><input type="number" step="0.01" min="0" class="form-control po-quantity" name="quantity" value="0"></td>
+                <td><input type="number" step="0.01" min="0" class="form-control po-unit-price" name="unit_price" value="0"></td>
+                <td><input type="number" step="0.01" min="0" class="form-control po-discount" name="discount" value="0"></td>
+                <td><input class="form-control po-line-total bg-light" value="0" readonly tabindex="-1"></td>
+                <td><button type="button" class="btn btn-outline-danger btn-sm remove-po-line">حذف</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <button type="button" class="btn btn-outline-light btn-sm add-po-line">أضف صنفا</button>
+        <div class="alert alert-secondary d-flex justify-content-between align-items-center mt-3">
+          <span>إجمالي الأمر</span>
+          <strong class="po-form-total">0</strong>
+        </div>
+        <div class="mb-3"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        <div class="mb-3"><label class="form-label">مرفق الفاتورة (اختياري)</label><input type="file" class="form-control" name="attachment" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"></div>
+        <button class="btn btn-cyan">حفظ أمر الشراء</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة أوامر الشراء</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-md-6">
+          <input id="poSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في رقم الطلب أو المورد أو الصنف">
+        </div>
+        <div class="col-md-4">
+          <select id="poProject" class="form-select form-select-sm">
+            <option value="">-- كل المشاريع --</option>
+            {% for project in projects %}
+              <option value="{{ project.code }}">{{ project.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button id="poResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not items %}
+        <div class="alert alert-info mb-3">لا توجد أوامر شراء بعد. أضف أمر شراء جديد وسيتم متابعة حالته من هنا.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="poTable" class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>المشروع</th>
+              <th>المخزن</th>
+              <th>الأصناف</th>
+              <th>الكمية</th>
+              <th>القيمة</th>
+              <th>المورد</th>
+              <th>طلب</th>
+              <th>فاتورة</th>
+              <th>التاريخ</th>
+              <th>الحالة</th>
+              <th>مرفق</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+              <tr data-search="{{ item.document_number }} {{ item.items_label }} {{ item.supplier.name if item.supplier else '' }} {{ item.warehouse_name or '' }}" data-project="{{ item.project.code }}">
+                <td>{{ item.project.display_name }}</td>
+                <td>{{ item.warehouse_name or default_warehouse }}</td>
+                <td>{{ item.items_label }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.total_value|groupnum }}</td>
+                <td>{{ item.supplier.name if item.supplier else '-' }}</td>
+                <td>{{ item.order_number or '-' }}</td>
+                <td>{{ item.invoice_number or '-' }}</td>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ item.status or '-' }}</td>
+                <td>
+                  {% for file in attachments.get(item.id, []) %}
+                    <a href="{{ url_for('download_attachment', attachment_id=file.id) }}">{{ file.original_name }}</a>{% if not loop.last %}<br>{% endif %}
+                  {% else %}
+                    <form method="post" action="{{ url_for('upload_attachment', entity_type='purchase_order', entity_id=item.id) }}" enctype="multipart/form-data" class="d-flex gap-1">
+                      <input type="file" name="attachment" class="form-control form-control-sm" required>
+                      <button class="btn btn-sm btn-outline-light">رفع</button>
+                    </form>
+                  {% endfor %}
+                </td>
+                <td class="text-nowrap">
+                  <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editPO{{ item.id }}">تعديل</button>
+                  <form method="post" action="{{ url_for('delete_operating_document', entity_type='purchase_order', entity_id=item.id) }}" class="d-inline" onsubmit="return confirm('سيتم حذف أمر الشراء وقيوده وحركة الاستلام التابعة له. متابعة؟');">
+                    <button class="btn btn-sm btn-outline-danger">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="12" class="text-center text-muted">لا توجد أوامر شراء</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in items %}
+        {% set lines = item.line_items if item.line_items else [] %}
+        <div class="modal fade" id="editPO{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_purchase_order', order_id=item.id) }}" class="po-form">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل أمر الشراء</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="row g-3">
+                    <div class="col-md-4">
+                      <label class="form-label">المشروع</label>
+                      <select class="form-select js-searchable-select" name="project_id" required>
+                        {% for p in projects %}<option value="{{ p.id }}" {% if item.project_id == p.id %}selected{% endif %}>{{ p.display_name }}</option>{% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label">المورد</label>
+                      <select class="form-select js-searchable-select" name="supplier_id" required>
+                        {% for s in suppliers %}<option value="{{ s.id }}" {% if item.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label">المخزن</label>
+                      <input class="form-control" name="warehouse_name" list="warehouseOptions" value="{{ item.warehouse_name or default_warehouse }}">
+                    </div>
+                    <div class="col-md-3"><label class="form-label">رقم الطلب</label><input class="form-control" name="order_number" value="{{ item.order_number or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">رقم الفاتورة</label><input class="form-control" name="invoice_number" value="{{ item.invoice_number or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div>
+                    <div class="col-md-3">
+                      <label class="form-label">الحالة</label>
+                      <select class="form-select" name="status">
+                        {% for status in status_options %}<option value="{{ status }}" {% if item.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+                      </select>
+                    </div>
+                  </div>
+                  <div class="table-responsive mt-3">
+                    <table class="table table-borderless align-middle mb-2 po-lines-table">
+                      <thead>
+                        <tr>
+                          <th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الخصم</th><th>القيمة</th><th></th>
+                        </tr>
+                      </thead>
+                      <tbody class="po-lines-body">
+                        {% if lines %}
+                          {% for line in lines %}
+                            <tr class="po-line-row">
+                              <td><input class="form-control po-item-name" name="item_name" list="materialOptions" value="{{ line.item_name }}"></td>
+                              <td>
+                                <select class="form-select form-select-sm js-searchable-select" name="unit">
+                                  <option value="">—</option>
+                                  {% for unit in unit_options %}<option value="{{ unit }}" {% if line.unit == unit %}selected{% endif %}>{{ unit }}</option>{% endfor %}
+                                </select>
+                              </td>
+                              <td><input type="number" step="0.01" min="0" class="form-control po-quantity" name="quantity" value="{{ line.quantity }}"></td>
+                              <td><input type="number" step="0.01" min="0" class="form-control po-unit-price" name="unit_price" value="{{ line.unit_price }}"></td>
+                              <td><input type="number" step="0.01" min="0" class="form-control po-discount" name="discount" value="{{ line.discount }}"></td>
+                              <td><input class="form-control po-line-total bg-light" value="{{ line.value }}" readonly tabindex="-1"></td>
+                              <td><button type="button" class="btn btn-outline-danger btn-sm remove-po-line">حذف</button></td>
+                            </tr>
+                          {% endfor %}
+                        {% else %}
+                          <tr class="po-line-row">
+                            <td><input class="form-control po-item-name" name="item_name" list="materialOptions" value="{{ item.item_name or '' }}"></td>
+                            <td>
+                              <select class="form-select form-select-sm js-searchable-select" name="unit">
+                                <option value="">—</option>
+                                {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+                              </select>
+                            </td>
+                            <td><input type="number" step="0.01" min="0" class="form-control po-quantity" name="quantity" value="{{ item.quantity }}"></td>
+                            <td><input type="number" step="0.01" min="0" class="form-control po-unit-price" name="unit_price" value="{{ item.unit_price }}"></td>
+                            <td><input type="number" step="0.01" min="0" class="form-control po-discount" name="discount" value="{{ item.discount }}"></td>
+                            <td><input class="form-control po-line-total bg-light" value="{{ item.total_value }}" readonly tabindex="-1"></td>
+                            <td><button type="button" class="btn btn-outline-danger btn-sm remove-po-line">حذف</button></td>
+                          </tr>
+                        {% endif %}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" class="btn btn-outline-light btn-sm add-po-line">أضف صنفا</button>
+                  <div class="alert alert-secondary d-flex justify-content-between align-items-center mt-3">
+                    <span>إجمالي الأمر</span>
+                    <strong class="po-form-total">{{ item.total_value|groupnum }}</strong>
+                  </div>
+                  <div class="mb-0"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes">{{ item.notes or '' }}</textarea></div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<datalist id="materialOptions">
+  {% for material_name in material_names %}<option value="{{ material_name }}"></option>{% endfor %}
+</datalist>
+<datalist id="warehouseOptions">
+  {% for warehouse_name in warehouse_names %}<option value="{{ warehouse_name }}"></option>{% endfor %}
+</datalist>
+
+<template id="poLineTemplate">
+  <tr class="po-line-row">
+    <td><input class="form-control po-item-name" name="item_name" list="materialOptions" placeholder="اسم الصنف"></td>
+    <td>
+      <select class="form-select form-select-sm js-searchable-select" name="unit">
+        <option value="">—</option>
+        {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+      </select>
+    </td>
+    <td><input type="number" step="0.01" min="0" class="form-control po-quantity" name="quantity" value="0"></td>
+    <td><input type="number" step="0.01" min="0" class="form-control po-unit-price" name="unit_price" value="0"></td>
+    <td><input type="number" step="0.01" min="0" class="form-control po-discount" name="discount" value="0"></td>
+    <td><input class="form-control po-line-total bg-light" value="0" readonly tabindex="-1"></td>
+    <td><button type="button" class="btn btn-outline-danger btn-sm remove-po-line">حذف</button></td>
+  </tr>
+</template>
+<script>
+  (function() {
+    const table = document.getElementById('poTable');
+    const rows = table ? Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search')) : [];
+    const searchInput = document.getElementById('poSearch');
+    const projectSelect = document.getElementById('poProject');
+    const resetBtn = document.getElementById('poResetFilter');
+    const template = document.getElementById('poLineTemplate');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        row.style.display = ((!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode)) ? '' : 'none';
+      });
+    }
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+
+    function lineTotal(row) {
+      const quantity = Number(row.querySelector('.po-quantity')?.value) || 0;
+      const unitPrice = Number(row.querySelector('.po-unit-price')?.value) || 0;
+      const discount = Number(row.querySelector('.po-discount')?.value) || 0;
+      return Math.max((quantity * unitPrice) - discount, 0);
+    }
+
+    function updateFormTotals(form) {
+      let total = 0;
+      form.querySelectorAll('.po-line-row').forEach((row) => {
+        const value = lineTotal(row);
+        const output = row.querySelector('.po-line-total');
+        if (output) output.value = value.toFixed(2);
+        total += value;
+      });
+      const totalEl = form.querySelector('.po-form-total');
+      if (totalEl) totalEl.textContent = total.toFixed(2);
+    }
+
+    function bindForm(form) {
+      form.addEventListener('input', () => updateFormTotals(form));
+      form.addEventListener('click', (event) => {
+        if (event.target.closest('.add-po-line')) {
+          const body = form.querySelector('.po-lines-body');
+          if (!body || !template) return;
+          const node = template.content.firstElementChild.cloneNode(true);
+          body.appendChild(node);
+          if (window.resetSearchableSelectClone) window.resetSearchableSelectClone(node);
+          updateFormTotals(form);
+        }
+        if (event.target.closest('.remove-po-line')) {
+          const body = form.querySelector('.po-lines-body');
+          const row = event.target.closest('.po-line-row');
+          if (body && row && body.querySelectorAll('.po-line-row').length > 1) row.remove();
+          updateFormTotals(form);
+        }
+      });
+      updateFormTotals(form);
+    }
+
+    document.querySelectorAll('.po-form').forEach(bindForm);
+  })();
+</script>
+{% endblock %}
