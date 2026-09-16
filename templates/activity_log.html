@@ -1,0 +1,106 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">سجل حركات المستخدمين</h2>
+          <p class="text-muted mb-0">شاشة المدير لمتابعة كل قيد أو مستند: من نفّذه، في أي يوم، وفي أي ساعة.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">عدد النتائج: {{ rows|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label mb-1">من تاريخ</label>
+          <input type="date" name="from_date" class="form-control" value="{{ from_date }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1">إلى تاريخ</label>
+          <input type="date" name="to_date" class="form-control" value="{{ to_date }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1">المستخدم</label>
+          <select name="user_id" class="form-select">
+            <option value="">الكل</option>
+            {% for user in users %}
+              <option value="{{ user.id }}" {% if selected_user_id == user.id|string %}selected{% endif %}>{{ user.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1">نوع العملية</label>
+          <select name="action" class="form-select">
+            <option value="">الكل</option>
+            {% for item in actions %}
+              <option value="{{ item }}" {% if selected_action == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label mb-1">نوع المستند</label>
+          <select name="entity_label" class="form-select">
+            <option value="">الكل</option>
+            {% for item in entity_labels %}
+              <option value="{{ item }}" {% if selected_entity_label == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button class="btn btn-cyan">عرض</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>اليوم والساعة</th>
+              <th>المستخدم</th>
+              <th>العملية</th>
+              <th>نوع المستند</th>
+              <th>رقم/مرجع</th>
+              <th>البيان</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td class="text-nowrap">{{ row.created_at }}</td>
+                <td>{{ row.user_name or 'النظام' }}</td>
+                <td>
+                  {% if row.action == 'إضافة' %}
+                    <span class="badge bg-success">{{ row.action }}</span>
+                  {% elif row.action == 'حذف' %}
+                    <span class="badge bg-danger">{{ row.action }}</span>
+                  {% elif row.action == 'ترحيل' %}
+                    <span class="badge bg-primary">{{ row.action }}</span>
+                  {% elif row.action == 'إلغاء ترحيل' %}
+                    <span class="badge bg-warning text-dark">{{ row.action }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ row.action }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.entity_label }}</td>
+                <td>{{ row.entity_id or '-' }}</td>
+                <td>{{ row.summary or '-' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="text-center text-muted">لا توجد حركات مطابقة للفلتر.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
