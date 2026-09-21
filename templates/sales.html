@@ -1,0 +1,292 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">المبيعات</h2>
+          <p class="text-muted mb-0">شيت النقلات والكميات المورّدة. صافي التكعيب = التكعيب − الخصم، والإجمالي = الصافي × السعر. كل نقلة تظهر في حساب السائق.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('print_sales_trips', **filters) }}" target="_blank"><i class="bi bi-printer"></i> طباعة</a>
+          <a class="btn btn-outline-light" href="{{ url_for('export_screen', screen='sales', **filters) }}"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+        </div>
+      </div>
+      <div class="row g-3 mt-3">
+        <div class="col-md-4">
+          <div class="p-3 rounded-3" style="background:#eef6ff;border:1px solid #cfe0f5;">
+            <div class="small text-muted">إجمالي الشيت</div>
+            <div class="fs-4 fw-bold js-sheet-total">{{ totals.total_amount|groupnum }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 rounded-3" style="background:#fff7e8;border:1px solid #f0d7a8;">
+            <div class="small text-muted">عهدة ودفعات</div>
+            <div class="fs-4 fw-bold">{{ totals.advances|groupnum }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 rounded-3" style="background:#eefaf1;border:1px solid #b7e0c2;">
+            <div class="small text-muted">المتبقي</div>
+            <div class="fs-4 fw-bold">{{ totals.remaining|groupnum }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">نقلة جديدة</h5>
+      <form method="post" id="salesForm">
+        <div class="row g-2">
+          <div class="col-6 col-lg-2"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" id="saleDate" value="{{ today_date }}"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">اليوم</label><input class="form-control" id="saleWeekday" value="{{ weekday_name }}" readonly tabindex="-1"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">رقم البون</label><input class="form-control" name="voucher_number" required></div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">النوع</label>
+            <input class="form-control" name="trip_type" list="tripTypes" value="سيارة">
+            <datalist id="tripTypes">{% for item in type_choices %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">من</label>
+            <input class="form-control" name="origin" list="originChoices">
+            <datalist id="originChoices">{% for item in origin_choices %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">إلى</label>
+            <input class="form-control" name="destination" list="destinationChoices">
+            <datalist id="destinationChoices">{% for item in destination_choices %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+          </div>
+          <div class="col-6 col-lg-2"><label class="form-label">المسافة كم</label><input type="number" step="0.01" min="0" class="form-control" name="distance_km" value="0"></div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">اسم السائق</label>
+            <input class="form-control" name="driver_name" list="driverChoices" required>
+            <datalist id="driverChoices">{% for item in driver_names %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">رقم الجرار</label>
+            <input class="form-control" name="tractor_number" list="tractorChoices">
+            <datalist id="tractorChoices">{% for item in tractor_choices %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+          </div>
+          <div class="col-6 col-lg-2"><label class="form-label">التكعيب</label><input type="number" step="0.01" min="0" class="form-control js-sale-calc" name="cubage" id="saleCubage" value="0"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">الخصم</label><input type="number" step="0.01" min="0" class="form-control js-sale-calc" name="discount" id="saleDiscount" value="0"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">صافي الكمية</label><input class="form-control bg-light" id="saleNet" value="0" readonly tabindex="-1"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">السعر</label><input type="number" step="0.01" min="0" class="form-control js-sale-calc" name="unit_price" id="salePrice" value="0"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">الإجمالي</label><input class="form-control bg-light fw-bold" id="saleTotal" value="0" readonly tabindex="-1"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">عهدة ودفعات</label><input type="number" step="0.01" min="0" class="form-control js-sale-calc" name="advances" id="saleAdvances" value="0"></div>
+          <div class="col-6 col-lg-2"><label class="form-label">المتبقي</label><input class="form-control bg-light" id="saleRemaining" value="0" readonly tabindex="-1"></div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">الفترة</label>
+            <input class="form-control" name="period_label" list="periodChoices">
+            <datalist id="periodChoices">{% for item in period_labels %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">المشروع</label>
+            <select class="form-select" name="project_id">
+              <option value="">بدون</option>
+              {% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-lg-4">
+            {% set selected_client = '' %}
+            {% include '_client_picker.html' %}
+          </div>
+        </div>
+        <div class="mt-3 d-flex justify-content-end">
+          <button class="btn btn-cyan">حفظ النقلة</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-6 col-lg-2"><label class="form-label mb-1">من تاريخ</label><input type="date" class="form-control" name="from_date" value="{{ filters.from_date }}"></div>
+        <div class="col-6 col-lg-2"><label class="form-label mb-1">إلى تاريخ</label><input type="date" class="form-control" name="to_date" value="{{ filters.to_date }}"></div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label mb-1">السائق</label>
+          <select class="form-select" name="driver_name">
+            <option value="">الكل</option>
+            {% for item in driver_names %}<option value="{{ item }}" {% if item == filters.driver_name %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label mb-1">الفترة</label>
+          <select class="form-select" name="period_label">
+            <option value="">الكل</option>
+            {% for item in period_labels %}<option value="{{ item }}" {% if item == filters.period_label %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2"><label class="form-label mb-1">رقم البون</label><input class="form-control" name="voucher" value="{{ filters.voucher }}"></div>
+        <div class="col-6 col-lg-1 d-grid"><button class="btn btn-primary">عرض</button></div>
+        <div class="col-6 col-lg-1 d-grid"><a class="btn btn-outline-light" href="{{ url_for('sales_trips') }}">إعادة</a></div>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle payroll-sheet">
+          <thead>
+            <tr>
+              <th>م</th>
+              <th>التاريخ</th>
+              <th>اليوم</th>
+              <th>رقم البون</th>
+              <th>النوع</th>
+              <th>من</th>
+              <th>إلى</th>
+              <th>المسافة</th>
+              <th>اسم السائق</th>
+              <th>رقم الجرار</th>
+              <th>التكعيب</th>
+              <th>الخصم</th>
+              <th>صافي الكمية</th>
+              <th>السعر</th>
+              <th>الإجمالي</th>
+              <th>عهدة ودفعات</th>
+              <th>المتبقي</th>
+              <th>الفترة</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in trips %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ weekday_of(item.date) or '-' }}</td>
+                <td>{{ item.document_number }}</td>
+                <td>{{ item.trip_type or '-' }}</td>
+                <td>{{ item.origin or '-' }}</td>
+                <td>{{ item.destination or '-' }}</td>
+                <td>{{ item.distance_km|groupnum }}</td>
+                <td>{{ item.driver_name }}</td>
+                <td>{{ item.tractor_number or '-' }}</td>
+                <td>{{ item.cubage|groupnum }}</td>
+                <td>{{ item.discount|groupnum }}</td>
+                <td>{{ item.net_quantity|groupnum }}</td>
+                <td>{{ item.unit_price|groupnum }}</td>
+                <td class="fw-bold">{{ item.total_amount|groupnum }}</td>
+                <td>{{ item.advances|groupnum }}</td>
+                <td>{{ item.remaining|groupnum }}</td>
+                <td>{{ item.period_label or '-' }}</td>
+                <td class="text-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editSale{{ item.id }}">تعديل</button>
+                  <form method="post" action="{{ url_for('delete_operating_document', entity_type='sales_trip', entity_id=item.id) }}" class="d-inline" onsubmit="return confirm('سيتم حذف النقلة وقيدها. متابعة؟');">
+                    <button class="btn btn-sm btn-outline-danger">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="19" class="text-center text-muted">لا توجد نقلات. أضف نقلة من النموذج أعلاه.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-bold">
+              <td colspan="10">إجمالي الشيت ({{ trips|length }} نقلة)</td>
+              <td>{{ totals.cubage|groupnum }}</td>
+              <td>{{ totals.discount|groupnum }}</td>
+              <td>{{ totals.net_quantity|groupnum }}</td>
+              <td></td>
+              <td>{{ totals.total_amount|groupnum }}</td>
+              <td>{{ totals.advances|groupnum }}</td>
+              <td>{{ totals.remaining|groupnum }}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for item in trips %}
+  <div class="modal fade" id="editSale{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('update_sales_trip', trip_id=item.id) }}" class="js-sale-edit">
+          <div class="modal-header"><h5 class="modal-title">تعديل نقلة {{ item.document_number }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="row g-2">
+              <div class="col-md-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">رقم البون</label><input class="form-control" name="voucher_number" value="{{ item.voucher_number or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">النوع</label><input class="form-control" name="trip_type" value="{{ item.trip_type or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">اسم السائق</label><input class="form-control" name="driver_name" value="{{ item.driver_name }}" required></div>
+              <div class="col-md-3"><label class="form-label">من</label><input class="form-control" name="origin" value="{{ item.origin or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">إلى</label><input class="form-control" name="destination" value="{{ item.destination or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">المسافة كم</label><input type="number" step="0.01" class="form-control" name="distance_km" value="{{ item.distance_km or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">رقم الجرار</label><input class="form-control" name="tractor_number" value="{{ item.tractor_number or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">التكعيب</label><input type="number" step="0.01" class="form-control js-sale-calc" name="cubage" value="{{ item.cubage or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">الخصم</label><input type="number" step="0.01" class="form-control js-sale-calc" name="discount" value="{{ item.discount or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">السعر</label><input type="number" step="0.01" class="form-control js-sale-calc" name="unit_price" value="{{ item.unit_price or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">عهدة ودفعات</label><input type="number" step="0.01" class="form-control js-sale-calc" name="advances" value="{{ item.advances or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">صافي الكمية</label><input class="form-control bg-light js-sale-net" value="{{ item.net_quantity or 0 }}" readonly></div>
+              <div class="col-md-3"><label class="form-label">الإجمالي</label><input class="form-control bg-light js-sale-total" value="{{ item.total_amount or 0 }}" readonly></div>
+              <div class="col-md-3"><label class="form-label">المتبقي</label><input class="form-control bg-light js-sale-remaining" value="{{ item.remaining or 0 }}" readonly></div>
+              <div class="col-md-3"><label class="form-label">الفترة</label><input class="form-control" name="period_label" value="{{ item.period_label or '' }}"></div>
+              <div class="col-md-4">
+                <label class="form-label">المشروع</label>
+                <select class="form-select" name="project_id">
+                  <option value="">بدون</option>
+                  {% for project in projects %}<option value="{{ project.id }}" {% if item.project_id == project.id %}selected{% endif %}>{{ project.display_name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-md-8">
+                {% set selected_client = item.client_name or '' %}
+                {% include '_client_picker.html' %}
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer"><button class="btn btn-cyan">حفظ التعديل</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+<script>
+  const WEEKDAYS = {{ ['الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد']|tojson }};
+  function num(value) { return parseFloat(value || 0) || 0; }
+  function money(value) { return Math.round((Number(value) + Number.EPSILON) * 100) / 100; }
+  function recalcSaleForm() {
+    const cubage = num(document.getElementById('saleCubage') && document.getElementById('saleCubage').value);
+    const discount = num(document.getElementById('saleDiscount') && document.getElementById('saleDiscount').value);
+    const price = num(document.getElementById('salePrice') && document.getElementById('salePrice').value);
+    const advances = num(document.getElementById('saleAdvances') && document.getElementById('saleAdvances').value);
+    const net = Math.max(cubage - discount, 0);
+    const total = money(net * price);
+    const remaining = money(total - advances);
+    const netEl = document.getElementById('saleNet');
+    const totalEl = document.getElementById('saleTotal');
+    const remainingEl = document.getElementById('saleRemaining');
+    if (netEl) netEl.value = net.toFixed(2);
+    if (totalEl) totalEl.value = total.toFixed(2);
+    if (remainingEl) remainingEl.value = remaining.toFixed(2);
+  }
+  function recalcEdit(form) {
+    const cubage = num(form.querySelector('[name="cubage"]').value);
+    const discount = num(form.querySelector('[name="discount"]').value);
+    const price = num(form.querySelector('[name="unit_price"]').value);
+    const advances = num(form.querySelector('[name="advances"]').value);
+    const net = Math.max(cubage - discount, 0);
+    const total = money(net * price);
+    form.querySelector('.js-sale-net').value = net.toFixed(2);
+    form.querySelector('.js-sale-total').value = total.toFixed(2);
+    form.querySelector('.js-sale-remaining').value = money(total - advances).toFixed(2);
+  }
+  document.querySelectorAll('#salesForm .js-sale-calc').forEach((input) => input.addEventListener('input', recalcSaleForm));
+  document.querySelectorAll('.js-sale-edit').forEach((form) => {
+    form.querySelectorAll('.js-sale-calc').forEach((input) => input.addEventListener('input', () => recalcEdit(form)));
+  });
+  const dateInput = document.getElementById('saleDate');
+  const weekdayInput = document.getElementById('saleWeekday');
+  function fillWeekday() {
+    if (!dateInput || !weekdayInput || !dateInput.value) return;
+    const dt = new Date(dateInput.value + 'T12:00:00');
+    if (isNaN(dt)) return;
+    weekdayInput.value = WEEKDAYS[dt.getDay() === 0 ? 6 : dt.getDay() - 1] || '';
+  }
+  if (dateInput) dateInput.addEventListener('change', fillWeekday);
+  recalcSaleForm();
+</script>
+{% endblock %}
