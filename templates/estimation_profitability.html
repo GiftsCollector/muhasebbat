@@ -1,0 +1,118 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">ربحية المقايسات والعمليات</h2>
+      <p class="text-muted">
+        مقارنة التكلفة الفعلية (مستخلصات باطن + مواد + مصاريف عهد + عمالة ومعدات) مقابل القيمة المعتمدة من العميل،
+        مع تحميل نسبة المصروفات الإدارية الخاصة بالكتيبة على التكلفة المباشرة.
+      </p>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">القيمة المعتمدة من العملاء</div><div class="h5 mb-0">{{ totals.client_value|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي التكلفة الفعلية</div><div class="h5 mb-0">{{ totals.total_cost|groupnum }}</div></div></div>
+      <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">الإداريات المحملة</div><div class="h5 mb-0">{{ totals.admin_allocation|groupnum }}</div></div></div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">صافي الربح / الخسارة</div>
+          <div class="h5 mb-0 {% if totals.profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ totals.profit|groupnum }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">ربحية العمليات على مستوى المشاريع</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>المشروع</th>
+              <th>القيمة المعتمدة</th>
+              <th>المصدر</th>
+              <th>مستخلصات باطن</th>
+              <th>مواد</th>
+              <th>مصاريف عهد</th>
+              <th>سواقين</th>
+              <th>عمالة</th>
+              <th>تكاليف أخرى</th>
+              <th>إداريات</th>
+              <th>إجمالي التكلفة</th>
+              <th>الربح</th>
+              <th>هامش %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in project_rows %}
+              <tr>
+                <td>
+                  <div class="fw-semibold">{{ row.project.display_name }}</div>
+                  <div class="small text-muted">{{ row.project.client_name }}</div>
+                </td>
+                <td class="fw-semibold">{{ row.client_value|groupnum }}</td>
+                <td><span class="small text-muted">{{ row.value_source }}</span></td>
+                <td>{{ row.subcontractor_cost|groupnum }}</td>
+                <td>{{ row.material_cost|groupnum }}</td>
+                <td>{{ row.custody_cost|groupnum }}</td>
+                <td>{{ row.driver_cost|groupnum }}</td>
+                <td>{{ row.labor_cost|groupnum }}</td>
+                <td>{{ row.other_cost|groupnum }}</td>
+                <td>{{ row.admin_allocation|groupnum }} {% if row.project.admin_percentage %}<span class="small text-muted">({{ row.project.admin_percentage }}%)</span>{% endif %}</td>
+                <td class="fw-semibold">{{ row.total_cost|groupnum }}</td>
+                <td class="fw-bold {% if row.profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ row.profit|groupnum }}</td>
+                <td>{{ row.margin }}%</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="13" class="text-center text-muted">لا توجد مشاريع مسجلة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">ربحية المقايسات</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead>
+            <tr><th>رقم المقايسة</th><th>العميل</th><th>المشروع</th><th>الحالة</th><th>القيمة النهائية</th><th>تكلفة المشروع الفعلية</th><th>الربح</th><th>هامش %</th></tr>
+          </thead>
+          <tbody>
+            {% for row in estimation_rows %}
+              <tr>
+                <td><a href="{{ url_for('estimation_detail', estimation_id=row.estimation.id) }}">{{ row.estimation.code }}</a></td>
+                <td>{{ row.estimation.client_name }}</td>
+                <td>{{ row.estimation.display_project }}</td>
+                <td>
+                  {% if row.estimation.status == 'معتمدة' %}
+                    <span class="badge bg-success">معتمدة</span>
+                  {% elif row.estimation.status == 'ملغاة' %}
+                    <span class="badge bg-danger">ملغاة</span>
+                  {% else %}
+                    <span class="badge bg-secondary">مسودة</span>
+                  {% endif %}
+                </td>
+                <td class="fw-semibold">{{ row.final_value|groupnum }}</td>
+                <td>{% if row.estimation.project_id %}{{ row.project_cost|groupnum }}{% else %}<span class="text-muted">غير مرتبطة بمشروع</span>{% endif %}</td>
+                <td class="fw-bold {% if row.profit is not none and row.profit < 0 %}text-danger{% elif row.profit is not none %}text-success{% endif %}">
+                  {% if row.profit is not none %}{{ row.profit|groupnum }}{% else %}-{% endif %}
+                </td>
+                <td>{% if row.margin is not none %}{{ row.margin }}%{% else %}-{% endif %}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-center text-muted">لا توجد مقايسات مسجلة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
