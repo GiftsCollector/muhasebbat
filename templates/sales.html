@@ -1,0 +1,418 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">المبيعات</h2>
+          <p class="text-muted mb-0">شيت النقلات والكميات المورّدة. صافي التكعيب = التكعيب − الخصم، والإجمالي = الصافي × السعر. كل نقلة تظهر في حساب السائق.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('print_sales_trips', **filters) }}" target="_blank"><i class="bi bi-printer"></i> طباعة</a>
+          <a class="btn btn-outline-light" href="{{ url_for('export_screen', screen='sales', **filters) }}"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+        </div>
+      </div>
+      <div class="row g-3 mt-3">
+        <div class="col-md-4">
+          <div class="p-3 rounded-3" style="background:#eef6ff;border:1px solid #cfe0f5;">
+            <div class="small text-muted">إجمالي الشيت</div>
+            <div class="fs-4 fw-bold js-sheet-total">{{ totals.total_amount|groupnum }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 rounded-3" style="background:#fff7e8;border:1px solid #f0d7a8;">
+            <div class="small text-muted">عهدة ودفعات</div>
+            <div class="fs-4 fw-bold">{{ totals.advances|groupnum }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 rounded-3" style="background:#eefaf1;border:1px solid #b7e0c2;">
+            <div class="small text-muted">المتبقي</div>
+            <div class="fs-4 fw-bold">{{ totals.remaining|groupnum }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h5 class="mb-0">نقلات جديدة</h5>
+        <div class="text-muted small">أضف بند لكل نقلة، واحفظ الدفعة كلها مرة واحدة بزر واحد.</div>
+      </div>
+      <datalist id="tripTypes">{% for item in type_choices %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+      <datalist id="clientChoices">{% for item in client_names %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+      <datalist id="driverChoices">{% for item in driver_names %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+      <datalist id="tractorChoices">{% for item in tractor_choices %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+      <datalist id="periodChoices">{% for item in period_labels %}<option value="{{ item }}"></option>{% endfor %}</datalist>
+
+      <style>
+        .sales-quick-header, .sales-line-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+        .sales-line-row { padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,.12); }
+        .sales-quick-header > div { padding-inline-start: 2px; }
+        .sq-date { width: 118px; }
+        .sq-day { width: 66px; }
+        .sq-voucher { width: 82px; }
+        .sq-type { width: 88px; }
+        .sq-client { width: 110px; }
+        .sq-note { width: 130px; }
+        .sq-distance { width: 62px; }
+        .sq-driver { width: 116px; }
+        .sq-tractor { width: 92px; }
+        .sq-num { width: 74px; }
+        .sq-period { width: 96px; }
+        .sq-remove { width: 56px; }
+        .sales-line-row .form-control { padding: .25rem .4rem; font-size: .8rem; }
+      </style>
+
+      <form method="post" id="salesForm">
+        <div class="sales-quick-header small text-muted mb-1">
+          <div class="sq-date">التاريخ</div>
+          <div class="sq-day">اليوم</div>
+          <div class="sq-voucher">رقم البون</div>
+          <div class="sq-type">النوع</div>
+          <div class="sq-client">العميل</div>
+          <div class="sq-note">البيان</div>
+          <div class="sq-distance">كم</div>
+          <div class="sq-driver">اسم السائق</div>
+          <div class="sq-tractor">رقم المعدة</div>
+          <div class="sq-num">التكعيب</div>
+          <div class="sq-num">الخصم</div>
+          <div class="sq-num">الصافي</div>
+          <div class="sq-num">السعر</div>
+          <div class="sq-num">الإجمالي</div>
+          <div class="sq-num">عهدة</div>
+          <div class="sq-num">المتبقي</div>
+          <div class="sq-period">الفترة</div>
+          <div class="sq-remove"></div>
+        </div>
+
+        <div id="salesLinesBody">
+          <div class="sales-line-row">
+            <div class="sq-date"><input type="date" class="form-control form-control-sm line-date" name="line_date" value="{{ today_date }}"></div>
+            <div class="sq-day"><input class="form-control form-control-sm line-weekday" value="{{ weekday_name }}" readonly tabindex="-1"></div>
+            <div class="sq-voucher"><input class="form-control form-control-sm" name="line_voucher_number" placeholder="رقم البون"></div>
+            <div class="sq-type"><input class="form-control form-control-sm" name="line_trip_type" list="tripTypes" value="سيارة" placeholder="النوع"></div>
+            <div class="sq-client"><input class="form-control form-control-sm line-client" name="line_client_name" list="clientChoices" placeholder="العميل"></div>
+            <div class="sq-note"><input class="form-control form-control-sm line-notes" name="line_notes" placeholder="البيان"></div>
+            <div class="sq-distance"><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="line_distance_km" value="0"></div>
+            <div class="sq-driver"><input class="form-control form-control-sm" name="line_driver_name" list="driverChoices" placeholder="اسم السائق"></div>
+            <div class="sq-tractor"><input class="form-control form-control-sm" name="line_tractor_number" list="tractorChoices" placeholder="رقم المعدة"></div>
+            <div class="sq-num"><input type="number" step="0.01" min="0" class="form-control form-control-sm js-sale-calc line-cubage" name="line_cubage" value="0"></div>
+            <div class="sq-num"><input type="number" step="0.01" min="0" class="form-control form-control-sm js-sale-calc line-discount" name="line_discount" value="0"></div>
+            <div class="sq-num"><input class="form-control form-control-sm bg-light line-net" value="0" readonly tabindex="-1"></div>
+            <div class="sq-num"><input type="number" step="0.01" min="0" class="form-control form-control-sm js-sale-calc line-price" name="line_unit_price" value="0"></div>
+            <div class="sq-num"><input class="form-control form-control-sm bg-light fw-bold line-total" value="0" readonly tabindex="-1"></div>
+            <div class="sq-num"><input type="number" step="0.01" min="0" class="form-control form-control-sm js-sale-calc line-advances" name="line_advances" value="0"></div>
+            <div class="sq-num"><input class="form-control form-control-sm bg-light line-remaining" value="0" readonly tabindex="-1"></div>
+            <div class="sq-period"><input class="form-control form-control-sm line-period" name="line_period_label" list="periodChoices" placeholder="الفترة"></div>
+            <div class="sq-remove"><button type="button" class="btn btn-sm btn-outline-danger remove-sale-line" tabindex="-1">حذف</button></div>
+          </div>
+        </div>
+
+        <div class="alert alert-secondary d-flex justify-content-between align-items-center mt-3 mb-0 py-2">
+          <span>إجمالي الدفعة الحالية</span>
+          <strong id="salesLinesTotal">0</strong>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button type="button" class="btn btn-outline-light" id="addSalesLine"><i class="bi bi-plus-lg"></i> إضافة بند</button>
+          <button class="btn btn-cyan">حفظ كل النقلات</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-6 col-lg-2"><label class="form-label mb-1">من تاريخ</label><input type="date" class="form-control" name="from_date" value="{{ filters.from_date }}"></div>
+        <div class="col-6 col-lg-2"><label class="form-label mb-1">إلى تاريخ</label><input type="date" class="form-control" name="to_date" value="{{ filters.to_date }}"></div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label mb-1">السائق</label>
+          <select class="form-select" name="driver_name">
+            <option value="">الكل</option>
+            {% for item in driver_names %}<option value="{{ item }}" {% if item == filters.driver_name %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label mb-1">العميل</label>
+          <select class="form-select" name="client_name">
+            <option value="">الكل</option>
+            {% for item in sheet_client_names %}<option value="{{ item }}" {% if item == filters.client_name %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label mb-1">الفترة</label>
+          <select class="form-select" name="period_label">
+            <option value="">الكل</option>
+            {% for item in period_labels %}<option value="{{ item }}" {% if item == filters.period_label %}selected{% endif %}>{{ item }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2"><label class="form-label mb-1">رقم البون</label><input class="form-control" name="voucher" value="{{ filters.voucher }}"></div>
+        <div class="col-6 col-lg-1 d-grid"><button class="btn btn-primary">عرض</button></div>
+        <div class="col-6 col-lg-1 d-grid"><a class="btn btn-outline-light" href="{{ url_for('sales_trips') }}">إعادة</a></div>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle payroll-sheet">
+          <thead>
+            <tr>
+              <th>م</th>
+              <th>التاريخ</th>
+              <th>اليوم</th>
+              <th>رقم البون</th>
+              <th>النوع</th>
+              <th>العميل</th>
+              <th>البيان</th>
+              <th>المسافة</th>
+              <th>اسم السائق</th>
+              <th>رقم المعدة</th>
+              <th>التكعيب</th>
+              <th>الخصم</th>
+              <th>صافي الكمية</th>
+              <th>السعر</th>
+              <th>الإجمالي</th>
+              <th>عهدة ودفعات</th>
+              <th>المتبقي</th>
+              <th>الفترة</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in trips %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ weekday_of(item.date) or '-' }}</td>
+                <td>{{ item.document_number }}</td>
+                <td>{{ item.trip_type or '-' }}</td>
+                <td>{{ item.client_name or '-' }}</td>
+                <td>{{ item.notes or '-' }}</td>
+                <td>{{ item.distance_km|groupnum }}</td>
+                <td>{{ item.driver_name }}</td>
+                <td>{{ item.tractor_number or '-' }}</td>
+                <td>{{ item.cubage|groupnum }}</td>
+                <td>{{ item.discount|groupnum }}</td>
+                <td>{{ item.net_quantity|groupnum }}</td>
+                <td>{{ item.unit_price|groupnum }}</td>
+                <td class="fw-bold">{{ item.total_amount|groupnum }}</td>
+                <td>{{ item.advances|groupnum }}</td>
+                <td>{{ item.remaining|groupnum }}</td>
+                <td>{{ item.period_label or '-' }}</td>
+                <td class="text-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editSale{{ item.id }}">تعديل</button>
+                  <form method="post" action="{{ url_for('delete_operating_document', entity_type='sales_trip', entity_id=item.id) }}" class="d-inline" onsubmit="return confirm('سيتم حذف النقلة وقيدها. متابعة؟');">
+                    <button class="btn btn-sm btn-outline-danger">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="19" class="text-center text-muted">لا توجد نقلات. أضف نقلة من النموذج أعلاه.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-bold">
+              <td colspan="10">إجمالي الشيت ({{ trips|length }} نقلة)</td>
+              <td>{{ totals.cubage|groupnum }}</td>
+              <td>{{ totals.discount|groupnum }}</td>
+              <td>{{ totals.net_quantity|groupnum }}</td>
+              <td></td>
+              <td>{{ totals.total_amount|groupnum }}</td>
+              <td>{{ totals.advances|groupnum }}</td>
+              <td>{{ totals.remaining|groupnum }}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for item in trips %}
+  <div class="modal fade" id="editSale{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('update_sales_trip', trip_id=item.id) }}" class="js-sale-edit">
+          <div class="modal-header"><h5 class="modal-title">تعديل نقلة {{ item.document_number }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="row g-2">
+              <div class="col-md-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ item.date or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">رقم البون</label><input class="form-control" name="voucher_number" value="{{ item.voucher_number or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">النوع</label><input class="form-control" name="trip_type" value="{{ item.trip_type or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">اسم السائق</label><input class="form-control" name="driver_name" value="{{ item.driver_name }}" required></div>
+              <div class="col-md-3"><label class="form-label">البيان</label><input class="form-control" name="notes" value="{{ item.notes or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">المسافة كم</label><input type="number" step="0.01" class="form-control" name="distance_km" value="{{ item.distance_km or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">رقم المعدة</label><input class="form-control" name="tractor_number" value="{{ item.tractor_number or '' }}"></div>
+              <div class="col-md-3"><label class="form-label">التكعيب</label><input type="number" step="0.01" class="form-control js-sale-calc" name="cubage" value="{{ item.cubage or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">الخصم</label><input type="number" step="0.01" class="form-control js-sale-calc" name="discount" value="{{ item.discount or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">السعر</label><input type="number" step="0.01" class="form-control js-sale-calc" name="unit_price" value="{{ item.unit_price or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">عهدة ودفعات</label><input type="number" step="0.01" class="form-control js-sale-calc" name="advances" value="{{ item.advances or 0 }}"></div>
+              <div class="col-md-3"><label class="form-label">صافي الكمية</label><input class="form-control bg-light js-sale-net" value="{{ item.net_quantity or 0 }}" readonly></div>
+              <div class="col-md-3"><label class="form-label">الإجمالي</label><input class="form-control bg-light js-sale-total" value="{{ item.total_amount or 0 }}" readonly></div>
+              <div class="col-md-3"><label class="form-label">المتبقي</label><input class="form-control bg-light js-sale-remaining" value="{{ item.remaining or 0 }}" readonly></div>
+              <div class="col-md-3"><label class="form-label">الفترة</label><input class="form-control" name="period_label" value="{{ item.period_label or '' }}"></div>
+              <div class="col-md-4">
+                <label class="form-label">المشروع</label>
+                <select class="form-select" name="project_id">
+                  <option value="">بدون</option>
+                  {% for project in projects %}<option value="{{ project.id }}" {% if item.project_id == project.id %}selected{% endif %}>{{ project.display_name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-md-8">
+                {% set selected_client = item.client_name or '' %}
+                {% include '_client_picker.html' %}
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer"><button class="btn btn-cyan">حفظ التعديل</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+<script>
+  const WEEKDAYS = {{ ['الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد']|tojson }};
+  function num(value) { return parseFloat(value || 0) || 0; }
+  function money(value) { return Math.round((Number(value) + Number.EPSILON) * 100) / 100; }
+
+  function recalcEdit(form) {
+    const cubage = num(form.querySelector('[name="cubage"]').value);
+    const discount = num(form.querySelector('[name="discount"]').value);
+    const price = num(form.querySelector('[name="unit_price"]').value);
+    const advances = num(form.querySelector('[name="advances"]').value);
+    const net = Math.max(cubage - discount, 0);
+    const total = money(net * price);
+    form.querySelector('.js-sale-net').value = net.toFixed(2);
+    form.querySelector('.js-sale-total').value = total.toFixed(2);
+    form.querySelector('.js-sale-remaining').value = money(total - advances).toFixed(2);
+  }
+  document.querySelectorAll('.js-sale-edit').forEach((form) => {
+    form.querySelectorAll('.js-sale-calc').forEach((input) => input.addEventListener('input', () => recalcEdit(form)));
+  });
+
+  (function () {
+    const linesBody = document.getElementById('salesLinesBody');
+    const addBtn = document.getElementById('addSalesLine');
+    const totalCell = document.getElementById('salesLinesTotal');
+    const form = document.getElementById('salesForm');
+    if (!linesBody) return;
+
+    function fillWeekday(row) {
+      const dateInput = row.querySelector('.line-date');
+      const weekdayInput = row.querySelector('.line-weekday');
+      if (!dateInput || !weekdayInput || !dateInput.value) return;
+      const dt = new Date(dateInput.value + 'T12:00:00');
+      if (isNaN(dt)) return;
+      weekdayInput.value = WEEKDAYS[dt.getDay() === 0 ? 6 : dt.getDay() - 1] || '';
+    }
+
+    function recalcRow(row) {
+      const cubage = num(row.querySelector('.line-cubage').value);
+      const discount = num(row.querySelector('.line-discount').value);
+      const price = num(row.querySelector('.line-price').value);
+      const advances = num(row.querySelector('.line-advances').value);
+      const net = Math.max(cubage - discount, 0);
+      const total = money(net * price);
+      row.querySelector('.line-net').value = net.toFixed(2);
+      row.querySelector('.line-total').value = total.toFixed(2);
+      row.querySelector('.line-remaining').value = money(total - advances).toFixed(2);
+    }
+
+    function recalcBatchTotal() {
+      let total = 0;
+      linesBody.querySelectorAll('.line-total').forEach((input) => { total += num(input.value); });
+      total = money(total);
+      if (totalCell) totalCell.textContent = total.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    }
+
+    function bindRow(row) {
+      row.querySelectorAll('.js-sale-calc').forEach((input) => {
+        input.addEventListener('input', () => { recalcRow(row); recalcBatchTotal(); });
+      });
+      const dateInput = row.querySelector('.line-date');
+      if (dateInput) dateInput.addEventListener('change', () => fillWeekday(row));
+    }
+
+    function rowIsEmpty(row) {
+      const driver = row.querySelector('[name="line_driver_name"]');
+      const voucher = row.querySelector('[name="line_voucher_number"]');
+      const cubage = num(row.querySelector('.line-cubage').value);
+      return !(driver && driver.value.trim()) && !(voucher && voucher.value.trim()) && cubage <= 0;
+    }
+
+    linesBody.querySelectorAll('.sales-line-row').forEach(bindRow);
+
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        const rows = linesBody.querySelectorAll('.sales-line-row');
+        const lastRow = rows[rows.length - 1];
+        const template = linesBody.querySelector('.sales-line-row');
+        if (!template) return;
+        const carryClient = lastRow ? lastRow.querySelector('.line-client').value : '';
+        const carryPeriod = lastRow ? lastRow.querySelector('.line-period').value : '';
+        const clone = template.cloneNode(true);
+        clone.querySelectorAll('input').forEach((input) => {
+          if (input.classList.contains('line-date')) {
+            input.value = "{{ today_date }}";
+          } else if (input.classList.contains('line-weekday')) {
+            input.value = "{{ weekday_name }}";
+          } else if (input.name === 'line_trip_type') {
+            input.value = 'سيارة';
+          } else if (input.classList.contains('line-client')) {
+            input.value = carryClient;
+          } else if (input.classList.contains('line-period')) {
+            input.value = carryPeriod;
+          } else if (input.readOnly) {
+            input.value = '0';
+          } else if (input.type === 'number') {
+            input.value = '0';
+          } else {
+            input.value = '';
+          }
+        });
+        linesBody.appendChild(clone);
+        bindRow(clone);
+        recalcBatchTotal();
+        const firstField = clone.querySelector('[name="line_voucher_number"]');
+        if (firstField) firstField.focus();
+      });
+    }
+
+    linesBody.addEventListener('click', (event) => {
+      if (!event.target.matches('.remove-sale-line')) return;
+      if (linesBody.querySelectorAll('.sales-line-row').length > 1) {
+        event.target.closest('.sales-line-row').remove();
+        recalcBatchTotal();
+      }
+    });
+
+    if (form) {
+      form.addEventListener('submit', (event) => {
+        const rows = Array.from(linesBody.querySelectorAll('.sales-line-row'));
+        const filled = rows.filter((row) => !rowIsEmpty(row));
+        if (!filled.length) {
+          event.preventDefault();
+          alert('يرجى إدخال بيانات نقلة واحدة على الأقل (اسم السائق ورقم البون على الأقل).');
+          return;
+        }
+        for (let i = 0; i < filled.length; i += 1) {
+          const row = filled[i];
+          const driver = row.querySelector('[name="line_driver_name"]').value.trim();
+          const position = rows.indexOf(row) + 1;
+          if (!driver) {
+            event.preventDefault();
+            alert('يرجى إدخال اسم السائق في البند رقم ' + position);
+            return;
+          }
+        }
+      });
+    }
+
+    recalcBatchTotal();
+  })();
+</script>
+{% endblock %}
