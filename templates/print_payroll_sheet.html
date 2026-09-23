@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>كشف المرتبات {{ period_month }}</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #111; margin: 0; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    h1 { margin: 0; font-size: 20px; color: #1d4f91; text-align: center; }
+    .meta { text-align: center; margin: 6px 0 12px; font-size: 13px; }
+    .side-meta { font-size: 12px; min-width: 130px; }
+    .totals { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .totals div { flex: 1; min-width: 140px; border: 1px solid #1d4f91; padding: 6px 8px; font-weight: bold; text-align: center; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8aa4c8; padding: 4px 5px; font-size: 11px; text-align: center; }
+    th { background: #1d4f91; color: #fff; }
+    tfoot td { font-weight: bold; background: #eef4fb; }
+    .signs { display: flex; justify-content: space-between; margin-top: 22px; font-size: 13px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  <div class="top">
+    <div class="side-meta">
+      <div>الساعة: {{ print_time }}</div>
+    </div>
+    <div style="flex:1;">
+      <h1>{{ company_name }}</h1>
+      <div class="meta">كشف المرتبات · شهر {{ period_month }}</div>
+    </div>
+    <div class="side-meta" style="text-align:left;">
+      <div>تاريخ الطباعة: {{ print_date }}</div>
+      <div>اليوم: {{ weekday_name or '-' }}</div>
+    </div>
+  </div>
+
+  <div class="totals">
+    <div>إجمالي الراتب الأساسي: {{ totals.basic_salary|groupnum }}</div>
+    <div>إجمالي الاستحقاقات: {{ totals.additions|groupnum }}</div>
+    <div>إجمالي الاستقطاعات: {{ totals.deductions|groupnum }}</div>
+    <div>إجمالي الصافي النقدي: {{ totals.net|groupnum }}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>م</th>
+        <th>الاسم</th>
+        <th>البلد</th>
+        <th>الوظيفة</th>
+        <th>موقع</th>
+        <th>الراتب الأساسى</th>
+        <th>اليومية</th>
+        <th>أيام / 30</th>
+        <th>الراتب</th>
+        <th>موصلات</th>
+        <th>اضافى</th>
+        <th>منح</th>
+        <th>سلف</th>
+        <th>خصومات</th>
+        <th>الصافى النقدى</th>
+        <th>ملاحظات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in payroll_rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td style="text-align:right;">{{ row.employee.name }}</td>
+          <td>{{ row.employee.payroll_hometown or '-' }}</td>
+          <td>{{ row.employee.payroll_job_title }}</td>
+          <td>{{ row.employee.payroll_site or '-' }}</td>
+          <td>{{ row.basic_salary|groupnum }}</td>
+          <td>{{ row.daily_rate|groupnum }}</td>
+          <td>{{ row.work_days|groupnum }} / 30</td>
+          <td>{{ row.earned_salary|groupnum }}</td>
+          <td>{{ row.transport|groupnum }}</td>
+          <td>{{ row.overtime|groupnum }}</td>
+          <td>{{ row.incentives|groupnum }}</td>
+          <td>{{ row.advances|groupnum }}</td>
+          <td>{{ row.other_deductions|groupnum }}</td>
+          <td>{{ row.net|groupnum }}</td>
+          <td style="text-align:right;">{{ row.notes or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="16">لا يوجد موظفون في هذا الشهر.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5">الإجمالي</td>
+        <td>{{ totals.basic_salary|groupnum }}</td>
+        <td></td>
+        <td></td>
+        <td>{{ totals.earned_salary|groupnum }}</td>
+        <td>{{ totals.transport|groupnum }}</td>
+        <td>{{ totals.overtime|groupnum }}</td>
+        <td>{{ totals.incentives|groupnum }}</td>
+        <td>{{ totals.advances|groupnum }}</td>
+        <td>{{ totals.other_deductions|groupnum }}</td>
+        <td>{{ totals.net|groupnum }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="signs">
+    <div>توقيع المحاسب / ..................</div>
+    <div>المدير المالى / {{ finance_manager }}</div>
+  </div>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
