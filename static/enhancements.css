@@ -1,0 +1,421 @@
+/* تحسينات احترافية للبرنامج */
+
+/* تأثيرات الفلاش واللمعان على الأزرار */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+
+/* تأثير البريق على الأزرار عند التمرير */
+.btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: translateX(-180%) skewX(-16deg);
+  transition: transform 0.55s ease;
+  pointer-events: none;
+}
+
+.btn:hover::before {
+  transform: translateX(280%) skewX(-16deg);
+}
+
+/* تحسينات الجداول */
+.table-hover tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.table-hover tbody tr:hover {
+  background-color: rgba(30, 115, 232, 0.08) !important;
+}
+
+/* تأثيرات المدخلات */
+.form-control,
+.form-select,
+textarea {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+
+.form-control:focus,
+.form-select:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* تأثير الإضاءة على المدخلات */
+.form-control::placeholder,
+textarea::placeholder {
+  transition: opacity 0.3s ease;
+}
+
+.form-control:focus::placeholder,
+textarea:focus::placeholder {
+  opacity: 0.6;
+}
+
+/* تحسينات النماذج */
+.form-group {
+  transition: all 0.3s ease;
+}
+
+.form-label {
+  transition: color 0.3s ease;
+}
+
+/* تأثيرات على الرابط والنص */
+.badge {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* تحسينات الجداول المتقدمة */
+.table-striped > tbody > tr:nth-of-type(odd) {
+  transition: background-color 0.3s ease;
+}
+
+/* تأثيرات على الصور والأيقونات */
+.navbar-logo {
+  transition: opacity 0.2s ease;
+}
+
+/* تحسينات الإنذارات */
+.alert {
+  position: relative;
+}
+
+/* تأثيرات على النصوص والعناوين */
+button,
+.btn,
+a {
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.18s ease;
+}
+
+.btn-primary:focus,
+.btn-cyan:focus {
+  outline: none;
+}
+
+/* تأثيرات على الكروت */
+.card,
+.glass-card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover,
+.glass-card:hover {
+  border-color: rgba(30, 115, 232, 0.28);
+}
+
+/* تحسينات إضافية */
+.shadow-sm {
+  transition: box-shadow 0.3s ease;
+}
+
+.shadow-sm:hover {
+  box-shadow: 0 10px 28px rgba(19, 44, 89, 0.1) !important;
+}
+
+.glass-card {
+  box-shadow: 0 8px 24px rgba(19, 44, 89, 0.06);
+}
+
+.glass-card:hover {
+  box-shadow: 0 10px 28px rgba(19, 44, 89, 0.1);
+}
+
+/* تأثيرات على العناصر المعطلة */
+button:disabled,
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* تأثيرات النقر والتفاعل */
+.btn:active {
+  transform: scale(0.98);
+}
+
+/* لا تُطبَّق transition على كل العناصر حتى لا تُكسر النوافذ المنبثقة */
+
+/* تأثيرات على الحقول المطلوبة */
+.required::after {
+  content: " *";
+  color: #ff6b6b;
+}
+
+/* تأثيرات على نصوص الخطأ */
+.text-danger,
+.invalid-feedback {
+  color: #c0392b;
+}
+
+/* تأثيرات على الفاصل والخطوط */
+hr {
+  transition: opacity 0.3s ease;
+}
+
+/* تحسينات الخلفيات */
+.bg-light {
+  transition: background-color 0.3s ease;
+}
+
+/* تأثيرات على الحاويات */
+.container,
+.container-fluid {
+  transition: none;
+}
+
+/* تأثيرات على الجداول المتقدمة */
+.table th {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.table th:hover {
+  background-color: rgba(55, 204, 245, 0.1);
+}
+
+/* تحسينات المؤشرات */
+*[role="button"] {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+*[role="button"]:hover {
+  filter: brightness(1.1);
+}
+
+/* تأثيرات على العناصر المحددة */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(55, 204, 245, 0.3);
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(55, 204, 245, 0.5);
+}
+
+.ipc-line {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft, #f8fbff);
+  padding: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ipc-line .searchable-select,
+.ipc-line .searchable-select-input,
+.ipc-line input,
+.ipc-line select {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.searchable-select {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  z-index: 2;
+}
+
+.searchable-select.is-open {
+  z-index: 40;
+}
+
+.sales-line-row {
+  overflow: visible;
+}
+
+.searchable-select-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  border: 0 !important;
+}
+
+.searchable-select-input {
+  cursor: text;
+}
+
+.searchable-select-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-height: 240px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 16px 32px rgba(19, 44, 89, 0.16);
+  z-index: 50;
+}
+
+.searchable-select.is-drop-up .searchable-select-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.searchable-select.is-open .searchable-select-menu {
+  display: block;
+}
+
+.searchable-select-option {
+  display: block;
+  width: 100%;
+  text-align: right;
+  background: transparent;
+  border: 0;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.searchable-select-option:hover,
+.searchable-select-option.is-active {
+  background: var(--primary-soft);
+}
+
+.searchable-select-option.is-selected {
+  font-weight: 600;
+}
+
+.searchable-select-add {
+  color: #0f4da5;
+  font-weight: 600;
+}
+
+.searchable-select-empty {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.table-responsive {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.modal-body:has(.searchable-select.is-open),
+.glass-card:has(.searchable-select.is-open) {
+  overflow: visible;
+}
+
+.perms-modal {
+  overflow-x: hidden;
+  overflow-y: auto !important;
+}
+
+.perms-modal .modal-dialog {
+  max-width: min(1180px, 96vw);
+  width: 96vw;
+  margin: 1.5vh auto;
+  max-height: 96vh;
+}
+
+.perms-modal .modal-content,
+.perms-modal .modal-content form {
+  max-height: 96vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.perms-modal .modal-body {
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.perms-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.perm-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  height: 100%;
+}
+
+.perm-card h6 {
+  font-size: 0.86rem;
+}
+
+.perm-checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0.4rem;
+  row-gap: 0.02rem;
+}
+
+.perms-modal .form-check {
+  min-height: 0;
+  margin-bottom: 0;
+  padding-top: 0.05rem;
+  padding-bottom: 0.05rem;
+}
+
+.perms-modal .form-check-label {
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 992px) {
+  .perms-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.secret-amount-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  vertical-align: middle;
+}
+
+.secret-eye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(30, 115, 232, 0.1);
+  color: #1e73e8;
+  line-height: 1;
+}
+
+.secret-eye-btn.is-open {
+  background: rgba(192, 122, 0, 0.16);
+  color: #c07a00;
+}
