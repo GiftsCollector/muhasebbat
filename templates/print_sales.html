@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>شيت المبيعات</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #111; margin: 0; }
+    h1 { margin: 0; font-size: 20px; color: #1d4f91; text-align: center; }
+    .meta { text-align: center; margin: 6px 0 12px; font-size: 13px; }
+    .totals { display: flex; gap: 12px; margin-bottom: 10px; }
+    .totals div { flex: 1; border: 1px solid #1d4f91; padding: 6px 8px; font-weight: bold; text-align: center; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8aa4c8; padding: 4px 5px; font-size: 11px; }
+    th { background: #1d4f91; color: #fff; }
+    tfoot td { font-weight: bold; background: #eef4fb; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  <h1>{{ company_name }}</h1>
+  <div class="meta">شيت المبيعات{% if filters.driver_name %} · سائق {{ filters.driver_name }}{% endif %}{% if filters.client_name %} · عميل {{ filters.client_name }}{% endif %}</div>
+  <div class="totals">
+    <div>الإجمالي: {{ totals.total_amount|groupnum }}</div>
+    <div>عهدة ودفعات: {{ totals.advances|groupnum }}</div>
+    <div>المتبقي: {{ totals.remaining|groupnum }}</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>م</th>
+        <th>التاريخ</th>
+        <th>اليوم</th>
+        <th>رقم البون</th>
+        <th>النوع</th>
+        <th>العميل</th>
+        <th>البيان</th>
+        <th>المسافة</th>
+        <th>اسم السائق</th>
+        <th>رقم المعدة</th>
+        <th>التكعيب</th>
+        <th>الخصم</th>
+        <th>صافي الكمية</th>
+        <th>السعر</th>
+        <th>الإجمالي</th>
+        <th>عهدة ودفعات</th>
+        <th>المتبقي</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in trips %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ item.date or '-' }}</td>
+          <td>{{ weekday_of(item.date) or '-' }}</td>
+          <td>{{ item.document_number }}</td>
+          <td>{{ item.trip_type or '-' }}</td>
+          <td>{{ item.client_name or '-' }}</td>
+          <td>{{ item.notes or '-' }}</td>
+          <td>{{ item.distance_km|groupnum }}</td>
+          <td>{{ item.driver_name }}</td>
+          <td>{{ item.tractor_number or '-' }}</td>
+          <td>{{ item.cubage|groupnum }}</td>
+          <td>{{ item.discount|groupnum }}</td>
+          <td>{{ item.net_quantity|groupnum }}</td>
+          <td>{{ item.unit_price|groupnum }}</td>
+          <td>{{ item.total_amount|groupnum }}</td>
+          <td>{{ item.advances|groupnum }}</td>
+          <td>{{ item.remaining|groupnum }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="17" style="text-align:center;">لا توجد نقلات</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="10">الإجمالي ({{ trips|length }} نقلة)</td>
+        <td>{{ totals.cubage|groupnum }}</td>
+        <td>{{ totals.discount|groupnum }}</td>
+        <td>{{ totals.net_quantity|groupnum }}</td>
+        <td></td>
+        <td>{{ totals.total_amount|groupnum }}</td>
+        <td>{{ totals.advances|groupnum }}</td>
+        <td>{{ totals.remaining|groupnum }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
