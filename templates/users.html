@@ -1,0 +1,215 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">إدارة المستخدمين</h2>
+          <p class="text-muted mb-0">أنشئ حساب لكل مستخدم، وحدد صلاحياته التفصيلية من زر إدارة الصلاحيات.</p>
+        </div>
+        <span class="badge bg-secondary py-2 px-3">إجمالي المستخدمين: {{ users|length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">إضافة مستخدم جديد</h5>
+      <form method="post" class="row g-3">
+        <div class="col-12"><label class="form-label">اسم المستخدم</label><input class="form-control" name="username" required></div>
+        <div class="col-12"><label class="form-label">الاسم الكامل</label><input class="form-control" name="full_name" required></div>
+        <div class="col-md-6"><label class="form-label">كلمة المرور</label><input type="password" class="form-control" name="password" required minlength="6"></div>
+        <div class="col-md-6"><label class="form-label">الصلاحية</label>
+          <select class="form-select" name="role">
+            {% for value, label in role_options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 form-check mt-2 me-3">
+          <input class="form-check-input" type="checkbox" name="is_active" id="is_active_new" checked>
+          <label class="form-check-label" for="is_active_new">حساب مفعل</label>
+        </div>
+        <div class="col-12 d-grid"><button class="btn btn-cyan">حفظ المستخدم</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">قائمة المستخدمين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>اسم المستخدم</th><th>الاسم الكامل</th><th>الصلاحية</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in users %}
+              <tr>
+                <td>{{ item.username }}</td>
+                <td>{{ item.full_name }}</td>
+                <td>
+                  {{ item.role_label }}
+                  {% if item.permissions_json and item.role != 'admin' %}
+                    <div class="small text-info">صلاحيات مخصصة</div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if item.is_active %}
+                    <span class="badge bg-success">مفعل</span>
+                  {% else %}
+                    <span class="badge bg-danger">متوقف</span>
+                  {% endif %}
+                </td>
+                <td class="text-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editUser{{ item.id }}">تعديل</button>
+                  <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#permsUser{{ item.id }}">إدارة الصلاحيات</button>
+                  {% if current_user and item.id != current_user.id %}
+                    <form method="post" action="{{ url_for('delete_user', user_id=item.id) }}" class="d-inline"
+                          onsubmit="return confirm('حذف المستخدم {{ item.username }}؟');">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">حذف</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted">لا يوجد مستخدمون</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% for item in users %}
+        {% set item_perms = user_perm_map.get(item.id, []) %}
+        <div class="modal fade" id="editUser{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_user', user_id=item.id) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">تعديل المستخدم {{ item.username }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body row g-3">
+                  <div class="col-md-6"><label class="form-label">الاسم الكامل</label><input class="form-control" name="full_name" value="{{ item.full_name }}" required></div>
+                  <div class="col-md-6"><label class="form-label">الصلاحية</label>
+                    <select class="form-select" name="role">
+                      {% for value, label in role_options %}
+                        <option value="{{ value }}" {% if item.role == value %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-12"><label class="form-label">كلمة مرور جديدة (اختياري)</label><input type="password" class="form-control" name="password" minlength="6"></div>
+                  <div class="col-12 form-check mt-1 me-3">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="is_active_{{ item.id }}" {% if item.is_active %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active_{{ item.id }}">حساب مفعل</label>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">حفظ التعديل</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal fade perms-modal" id="permsUser{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_user_permissions', user_id=item.id) }}" class="d-flex flex-column h-100">
+                <div class="modal-header py-2">
+                  <h5 class="modal-title">صلاحيات {{ item.full_name }}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                  {% if item.role == 'admin' %}
+                    <p class="small text-warning mb-2">صلاحيات مدير النظام كاملة، ولا يمكن إزالة الصلاحيات الأساسية.</p>
+                  {% else %}
+                    <p class="small text-muted mb-2">حدد ما يقدر يعمله هذا المستخدم. الشاشة الرئيسية اختيارية: لو شلتها مش هيشوف لوحة التحكم.</p>
+                  {% endif %}
+                  <div class="perms-grid">
+                    {% for group in permission_groups %}
+                      <div class="perm-group">
+                        <div class="perm-card">
+                          <div class="d-flex justify-content-between align-items-center mb-1">
+                            <h6 class="mb-0">{{ group.label }}</h6>
+                            {% if item.role != 'admin' %}
+                              <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-light perm-select-all">الكل</button>
+                                <button type="button" class="btn btn-outline-light perm-select-none">مسح</button>
+                              </div>
+                            {% endif %}
+                          </div>
+                          <div class="perm-checks">
+                            {% for key, label in group.permissions %}
+                              <div class="form-check">
+                                <input
+                                  class="form-check-input"
+                                  type="checkbox"
+                                  name="perm"
+                                  value="{{ key }}"
+                                  id="perm_{{ item.id }}_{{ key|replace('.', '_') }}"
+                                  {% if '*' in item_perms or key in item_perms %}checked{% endif %}
+                                  {% if item.role == 'admin' %}disabled{% endif %}
+                                >
+                                <label class="form-check-label" for="perm_{{ item.id }}_{{ key|replace('.', '_') }}">{{ label }}</label>
+                              </div>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                  {% if item.role != 'admin' and treasury_accounts|default([]) %}
+                    <div class="perm-group mt-3">
+                      <div class="perm-card">
+                        <h6 class="mb-2">الخزن الظاهرة للمستخدم</h6>
+                        <p class="small text-muted mb-2">لو شلت خزنة، مش هيشوف رصيدها ولا أي قيد أو حركة تخصها.</p>
+                        <input type="hidden" name="treasury_scope" value="1">
+                        <div class="perm-checks">
+                          {% for account in treasury_accounts %}
+                            <div class="form-check">
+                              <input
+                                class="form-check-input"
+                                type="checkbox"
+                                name="visible_treasury"
+                                value="{{ account.id }}"
+                                id="trs_{{ item.id }}_{{ account.id }}"
+                                {% if account.id not in user_hidden_treasuries.get(item.id, []) %}checked{% endif %}
+                              >
+                              <label class="form-check-label" for="trs_{{ item.id }}_{{ account.id }}">{{ account.code }} — {{ account.name }}</label>
+                            </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  {% endif %}
+                </div>
+                <div class="modal-footer py-2">
+                  <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button>
+                  <button type="submit" class="btn btn-cyan">{% if item.role == 'admin' %}تأكيد الصلاحيات الكاملة{% else %}حفظ الصلاحيات{% endif %}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  document.querySelectorAll('.perm-select-all').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const group = btn.closest('.perm-group');
+      group.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(function (box) {
+        box.checked = true;
+      });
+    });
+  });
+  document.querySelectorAll('.perm-select-none').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const group = btn.closest('.perm-group');
+      group.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(function (box) {
+        box.checked = false;
+      });
+    });
+  });
+</script>
+{% endblock %}

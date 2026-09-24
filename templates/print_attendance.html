@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>كشف الحضور والانصراف {{ period_month }}</title>
+  <style>
+    @page { size: A4 landscape; margin: 8mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #111; margin: 0; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    h1 { margin: 0; font-size: 20px; color: #1d4f91; text-align: center; }
+    .meta { text-align: center; margin: 6px 0 12px; font-size: 13px; }
+    .side-meta { font-size: 12px; min-width: 130px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8aa4c8; padding: 4px 5px; font-size: 11px; text-align: center; }
+    th { background: #1d4f91; color: #fff; }
+    h2 { font-size: 15px; color: #1d4f91; margin: 18px 0 8px; }
+    .signs { display: flex; justify-content: space-between; margin-top: 22px; font-size: 13px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  <div class="top">
+    <div class="side-meta">
+      <div>الساعة: {{ print_time }}</div>
+    </div>
+    <div style="flex:1;">
+      <h1>{{ company_name }}</h1>
+      <div class="meta">كشف الحضور والانصراف · شهر {{ period_month }} · آخر حالة محفوظة</div>
+    </div>
+    <div class="side-meta" style="text-align:left;">
+      <div>تاريخ الطباعة: {{ print_date }}</div>
+      <div>اليوم: {{ weekday_name or '-' }}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>م</th>
+        <th>الموظف</th>
+        <th>الكود</th>
+        <th>الحالة</th>
+        <th>من</th>
+        <th>إلى</th>
+        <th>حضور</th>
+        <th>إجازة</th>
+        <th>غياب</th>
+        <th>إجمالي</th>
+        <th>الحفظ</th>
+        <th>ملاحظة</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in attendance_sheet %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ row.employee.display_name }}</td>
+          <td>{{ row.employee.display_code }}</td>
+          <td>{{ row.status or '-' }}</td>
+          <td>{{ row.from_date or '-' }}</td>
+          <td>{{ row.to_date or '-' }}</td>
+          <td>{{ row.work_days|groupnum }}</td>
+          <td>{{ row.vacation_days|groupnum }}</td>
+          <td>{{ row.absent_days|groupnum }}</td>
+          <td>{{ row.total_days|groupnum }}</td>
+          <td>{{ row.record_status or '-' }}</td>
+          <td>{{ row.notes or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12">لا يوجد موظفون</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>سجل الأيام المحفوظة</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>التاريخ</th>
+        <th>الموظف</th>
+        <th>الحالة</th>
+        <th>حضور</th>
+        <th>انصراف</th>
+        <th>الحفظ</th>
+        <th>ملاحظة</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in attendance_rows %}
+        <tr>
+          <td>{{ item.date }}</td>
+          <td>{{ item.employee.display_name if item.employee else '-' }}</td>
+          <td>{{ item.status }}</td>
+          <td>{{ item.check_in or '-' }}</td>
+          <td>{{ item.check_out or '-' }}</td>
+          <td>{{ item.record_status or 'مرحل' }}</td>
+          <td>{{ item.notes or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7">لا توجد أيام محفوظة في هذا الشهر.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="signs">
+    <div>توقيع المحاسب / ..................</div>
+    <div>المدير المالى / {{ finance_manager }}</div>
+  </div>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
