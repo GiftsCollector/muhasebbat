@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>كشف حساب {{ statement.account.code }} - {{ statement.account.name }}</title>
+  <style>
+    body { font-family: Tahoma, Arial, sans-serif; padding: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: right; }
+    .meta { margin: 4px 0; color: #444; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+  <h1>كشف حساب</h1>
+  <p>{{ statement.account.code }} — {{ statement.account.name }}</p>
+  <p class="meta">الفئة: {{ statement.account.category or '-' }} · طبيعة الحساب: {{ statement.nature }}</p>
+  {% if statement.from_date or statement.to_date %}
+    <p class="meta">الفترة: {{ statement.from_date or 'من البداية' }} إلى {{ statement.to_date or 'آخر حركة' }}</p>
+  {% endif %}
+  <p class="meta">
+    افتتاحي: {{ statement.opening_display|groupnum }} {{ statement.opening_side }} —
+    مدين: {{ statement.period_debit|groupnum }} —
+    دائن: {{ statement.period_credit|groupnum }} —
+    ختامي: {{ statement.closing_display|groupnum }} {{ statement.closing_side }}
+  </p>
+  {% if driver_trips %}
+    <h2 style="margin-top:20px;">نقلات السائق {{ driver_trips.driver_name }} (شيت المبيعات)</h2>
+    <p class="meta">
+      عدد النقلات: {{ driver_trips.count }} —
+      إجمالي المسافات: {{ driver_trips.distance_total|groupnum }} كم —
+      إجمالي صافي الكمية: {{ driver_trips.cubage_total|groupnum }} —
+      إجمالي القيمة: {{ driver_trips.amount_total|groupnum }}
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>التاريخ</th><th>البون</th><th>النوع</th><th>المسافة كم</th><th>البيان</th>
+          <th>صافي الكمية</th><th>السعر</th><th>الإجمالي</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in driver_trips.trips %}
+          <tr>
+            <td>{{ item.date or '-' }}</td>
+            <td>{{ item.document_number }}</td>
+            <td>{{ item.trip_type or '-' }}</td>
+            <td>{{ item.distance_km|groupnum }}</td>
+            <td>{{ item.notes or '-' }}</td>
+            <td>{{ item.net_quantity|groupnum }}</td>
+            <td>{{ item.unit_price|groupnum }}</td>
+            <td>{{ item.total_amount|groupnum }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8">لا توجد نقلات مبيعات لهذا السائق.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <h2 style="margin-top:20px;">حركة الحساب</h2>
+  {% endif %}
+  <table>
+    <thead>
+      <tr>
+        <th>التاريخ</th><th>المرجع</th><th>البيان</th><th>الحساب المقابل</th>
+        <th>مدين</th><th>دائن</th><th>الرصيد</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td colspan="6">رصيد أول المدة</td>
+        <td>{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</td>
+      </tr>
+      {% for line in statement.movements %}
+        <tr>
+          <td>{{ line.date or '-' }}</td>
+          <td>{{ line.reference }}</td>
+          <td>{{ line.description }}</td>
+          <td>{{ line.counter_account }}</td>
+          <td>{{ line.debit|groupnum }}</td>
+          <td>{{ line.credit|groupnum }}</td>
+          <td>{{ line.running_display|groupnum }} {{ line.running_side }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7">لا توجد حركات مرحلة على هذا الحساب.</td></tr>
+      {% endfor %}
+      <tr>
+        <td colspan="4">الإجمالي / الرصيد الختامي</td>
+        <td>{{ statement.period_debit|groupnum }}</td>
+        <td>{{ statement.period_credit|groupnum }}</td>
+        <td>{{ statement.closing_display|groupnum }} {{ statement.closing_side }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
