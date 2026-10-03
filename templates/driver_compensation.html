@@ -1,0 +1,410 @@
+{% extends 'layout.html' %}
+{% block content %}
+{% set editing = edit_entry %}
+{% set amt = editing.sheet_amounts() if editing else {} %}
+{% set driver_name_list = driver_records|map(attribute='name')|list %}
+
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
+        <div>
+          <h2 class="section-title">حساب سواقين الجرارات و القلابات</h2>
+          <p class="text-muted mb-0">كشف المستحقات والاستقطاعات لكل سائق. المبلغ المسدد يخفض حساب السائق والخزنة المصروف منها.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('print_setup', screen='drivers') }}"><i class="bi bi-printer"></i> طباعة تقرير</a>
+          <a class="btn btn-outline-light" href="{{ url_for('export_screen', screen='drivers') }}"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">{% if editing %}تعديل كشف {{ editing.driver_name }}{% else %}إدخال كشف سائق{% endif %}</h5>
+        {% if editing %}
+        <a class="btn btn-sm btn-outline-light" href="{{ url_for('driver_compensation') }}">إلغاء التعديل</a>
+        {% endif %}
+      </div>
+      <form method="post" id="driverSheetForm" action="{% if editing %}{{ url_for('update_driver_compensation', entry_id=editing.id) }}{% else %}{{ url_for('driver_compensation') }}{% endif %}">
+        <div class="border rounded-3 p-3 mb-3">
+          <h6 class="mb-3">بيانات السائق</h6>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label">التاريخ</label>
+              <input type="date" class="form-control" name="date" id="sheetDate" value="{{ editing.date if editing else today_date }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">اليوم</label>
+              <input class="form-control" id="sheetWeekday" value="{{ weekday_of(editing.date) if editing else weekday_of(today_date) }}" readonly tabindex="-1">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">اسم السواق</label>
+              <select class="form-select js-searchable-select" name="driver_name" id="driverNameSelect" data-allow-custom="1" data-placeholder="اختر السائق" required>
+                <option value="">اختر السائق</option>
+                {% for item in driver_records %}
+                <option value="{{ item.name }}" data-code="{{ item.code }}" {% if editing and editing.driver_name == item.name %}selected{% endif %}>{{ item.name }}{% if item.code %} — {{ item.code }}{% endif %}</option>
+                {% endfor %}
+                {% if editing and editing.driver_name and editing.driver_name not in driver_name_list %}
+                <option value="{{ editing.driver_name }}" data-code="{{ editing.driver_code or '' }}" selected>{{ editing.driver_name }}</option>
+                {% endif %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">كود السواق</label>
+              <input class="form-control" name="driver_code" id="driverCodeInput" value="{{ editing.driver_code if editing else '' }}" placeholder="يتضاف تلقائيًا">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">رقم القومى</label>
+              <input class="form-control" name="national_id" value="{{ editing.national_id if editing else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">رقم الهاتف</label>
+              <input class="form-control" name="phone" value="{{ editing.phone if editing else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">نوع السيارة</label>
+              <select class="form-select" name="vehicle_type">
+                <option value="">-- اختر --</option>
+                {% for vt in vehicle_types %}
+                <option value="{{ vt }}" {% if editing and editing.vehicle_type == vt %}selected{% endif %}>{{ vt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">رقم السيارة</label>
+              {% with name='tractor_number', options=equipment_names, selected=editing.tractor_number if editing else '', placeholder='اختر رقم المعدة', required=false %}
+                {% include '_combo_select.html' %}
+              {% endwith %}
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">من فترة</label>
+              <input type="date" class="form-control" name="period_from" value="{{ editing.period_from if editing else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">إلى فترة</label>
+              <input type="date" class="form-control" name="period_to" value="{{ editing.period_to if editing else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">المشروع</label>
+              <select class="form-select js-searchable-select" name="project_id">
+                <option value="">-- بدون مشروع --</option>
+                {% for p in projects %}
+                <option value="{{ p.id }}" {% if editing and editing.project_id == p.id %}selected{% endif %}>{{ p.display_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">مرجع</label>
+              <input class="form-control" name="reference" value="{{ editing.reference if editing else '' }}">
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-4">
+            <div class="border rounded-3 p-3 h-100">
+              <h6 class="mb-3">اجمالى حساب سواق</h6>
+              {% for field in account_fields %}
+              <div class="mb-2">
+                <label class="form-label">{{ field[1] }}</label>
+                <input type="number" step="0.01" min="0" class="form-control js-sheet-amt" data-group="account" name="sheet_{{ field[0] }}" value="{{ amt.get(field[0], 0) if editing else 0 }}">
+              </div>
+              {% endfor %}
+              <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                <span>اجمالى حساب سواق</span>
+                <strong id="totAccount">0</strong>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="border rounded-3 p-3 h-100">
+              <h6 class="mb-3">مصاريف النقل</h6>
+              {% for field in transport_fields %}
+              <div class="mb-2">
+                <label class="form-label">{{ field[1] }}</label>
+                <input type="number" step="0.01" min="0" class="form-control js-sheet-amt" data-group="transport" name="sheet_{{ field[0] }}" value="{{ amt.get(field[0], 0) if editing else 0 }}">
+              </div>
+              {% endfor %}
+              <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                <span>مصاريف النقل</span>
+                <strong id="totTransport">0</strong>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="border rounded-3 p-3 h-100">
+              <h6 class="mb-3">النثريات</h6>
+              {% for field in sundry_fields %}
+              <div class="mb-2">
+                <label class="form-label">{{ field[1] }}</label>
+                <input type="number" step="0.01" min="0" class="form-control js-sheet-amt" data-group="sundry" name="sheet_{{ field[0] }}" value="{{ amt.get(field[0], 0) if editing else 0 }}">
+              </div>
+              {% endfor %}
+              <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                <span>اجمالى النثريات</span>
+                <strong id="totSundry">0</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="border rounded-3 p-3 mb-3">
+          <h6 class="mb-3">الاستقطاعات</h6>
+          <div class="row g-3">
+            {% for field in deduction_fields %}
+            <div class="col-md-3">
+              <label class="form-label">{{ field[1] }}</label>
+              <input type="number" step="0.01" min="0" class="form-control js-sheet-amt" data-group="deduction" name="sheet_{{ field[0] }}" value="{{ amt.get(field[0], 0) if editing else 0 }}">
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-md-3">
+            <div class="border rounded-3 p-3 h-100">
+              <div class="small text-muted">اجمالى المستحقات</div>
+              <div class="fs-5 fw-bold" id="totEntitlements">0</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="border rounded-3 p-3 h-100">
+              <div class="small text-muted">اجمالى الاستقطاعات</div>
+              <div class="fs-5 fw-bold" id="totDeductions">0</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="border rounded-3 p-3 h-100">
+              <div class="small text-muted">صافى حساب السائق</div>
+              <div class="fs-5 fw-bold" id="totNet">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="border rounded-3 p-3 mb-3">
+          <h6 class="mb-3">السداد والاعتماد</h6>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label">المسدد</label>
+              <input type="number" step="0.01" min="0" class="form-control" name="paid_amount" value="{{ editing.paid_amount if editing else 0 }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">حساب الخزنة (عند السداد)</label>
+              <select class="form-select js-searchable-select" name="treasury_account_id">
+                <option value="">-- بدون سداد الآن --</option>
+                {% for acc in treasury_accounts %}
+                <option value="{{ acc.id }}" {% if editing and editing.treasury_account_id == acc.id %}selected{% endif %}>{{ acc.code }} - {{ acc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">المحاسب</label>
+              <input class="form-control" name="accountant_name" value="{{ editing.accountant_name if editing else '' }}" placeholder="اسم المحاسب">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">ملاحظات</label>
+              <input class="form-control" name="notes" value="{{ editing.notes if editing else '' }}">
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-cyan">{% if editing %}حفظ التعديل{% else %}حفظ الكشف{% endif %}</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">فلترة الكشف</h5>
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" class="form-control" name="from_date" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" class="form-control" name="to_date" value="{{ to_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">السائق</label><select class="form-select" name="driver_name"><option value="">الكل</option>{% for n in all_driver_names %}<option value="{{ n }}" {% if n == driver_filter %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+        <div class="col-md-3 d-flex gap-2">
+          <button class="btn btn-primary flex-grow-1">تطبيق</button>
+          <a class="btn btn-outline-light" href="{{ url_for('driver_compensation') }}">إعادة</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">ملخص مستحقات السواقين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>السائق</th><th>كشوف</th><th>نقلات المبيعات</th><th>المسافة كم</th><th>المستحقات</th><th>الاستقطاعات</th><th>الصافى</th><th>المسدد</th><th>المتبقي</th></tr></thead>
+          <tbody>
+            {% for row in summary_rows %}
+            <tr>
+              <td>{{ row.driver_name }}</td>
+              <td>{{ row.sheets }}</td>
+              <td>{{ row.sales_trips|groupnum }}</td>
+              <td>{{ row.sales_distance|groupnum }}</td>
+              <td>{{ row.entitlements|groupnum }}</td>
+              <td>{{ row.deductions|groupnum }}</td>
+              <td>{{ row.net|groupnum }}</td>
+              <td>{{ row.paid_total|groupnum }}</td>
+              <td class="{% if row.due_total > 0 %}text-warning{% elif row.due_total < 0 %}text-success{% endif %}">{{ row.due_total|groupnum }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center text-muted">لا توجد بيانات.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>الإجمالي</th>
+              <th>{{ totals.sheets }}</th>
+              <th>{{ totals.sales_trips|groupnum }}</th>
+              <th>{{ totals.sales_distance|groupnum }}</th>
+              <th>{{ totals.entitlements|groupnum }}</th>
+              <th>{{ totals.deductions|groupnum }}</th>
+              <th>{{ totals.net|groupnum }}</th>
+              <th>{{ totals.paid|groupnum }}</th>
+              <th>{{ totals.due|groupnum }}</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">نقلات المبيعات</h5>
+        <a class="btn btn-sm btn-outline-light" href="{{ url_for('sales_trips', driver_name=driver_filter) }}">فتح شيت المبيعات</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>البون</th><th>السائق</th><th>النوع</th><th>من / إلى</th><th>المسافة كم</th></tr></thead>
+          <tbody>
+            {% for item in sales_trips %}
+            <tr>
+              <td>{{ item.date or '-' }}</td>
+              <td>{{ item.document_number }}</td>
+              <td>{{ item.driver_name }}</td>
+              <td>{{ item.trip_type or '-' }}</td>
+              <td>{{ item.notes or '-' }}</td>
+              <td>{{ item.distance_km|groupnum }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted">لا توجد نقلات مبيعات في الفلتر الحالي.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">كشوف السواقين</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>السائق</th><th>الكود</th><th>السيارة</th><th>المستحقات</th><th>الاستقطاعات</th><th>الصافى</th><th>المسدد</th><th>المستخدم</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {% for item in entries %}
+            <tr>
+              <td>{{ item.date or '-' }}</td>
+              <td>{{ item.driver_name }}</td>
+              <td>{{ item.driver_code or '-' }}</td>
+              <td>{{ item.vehicle_type or '-' }}{% if item.tractor_number %} / {{ item.tractor_number }}{% endif %}</td>
+              <td>{{ (item.entitlements_total or item.gross_amount)|groupnum }}</td>
+              <td>{{ (item.deductions_total or 0)|groupnum }}</td>
+              <td>{{ (item.net_amount if item.details_json else item.gross_amount)|groupnum }}</td>
+              <td>{{ item.paid_amount|groupnum }}</td>
+              <td>{{ item.updated_by_name or item.created_by_name or '-' }}</td>
+              <td>
+                <a class="btn btn-sm btn-outline-info" href="{{ url_for('driver_compensation', edit=item.id, from_date=from_date, to_date=to_date, driver_name=driver_filter) }}">تعديل</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('print_driver_sheet', entry_id=item.id) }}" target="_blank">طباعة</a>
+                <form method="post" action="{{ url_for('delete_operating_document', entity_type='driver', entity_id=item.id) }}" class="d-inline"
+                      onsubmit="return confirm('سيتم حذف كشف السائق وقيوده. متابعة؟');">
+                  <button class="btn btn-sm btn-outline-danger">حذف</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-muted">لا توجد كشوف</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const WEEKDAYS = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    const dateInput = document.getElementById('sheetDate');
+    const weekdayInput = document.getElementById('sheetWeekday');
+    const driverSelect = document.getElementById('driverNameSelect');
+    const driverCode = document.getElementById('driverCodeInput');
+
+    function weekdayOf(iso) {
+      if (!iso) return '';
+      const parts = iso.split('-');
+      if (parts.length < 3) return '';
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      if (isNaN(d.getTime())) return '';
+      return WEEKDAYS[(d.getDay() + 6) % 7];
+    }
+
+    function refreshWeekday() {
+      if (weekdayInput) weekdayInput.value = weekdayOf(dateInput && dateInput.value);
+    }
+
+    function fillDriverCode() {
+      if (!driverSelect || !driverCode) return;
+      const option = driverSelect.options[driverSelect.selectedIndex];
+      const code = option && option.getAttribute('data-code');
+      if (code) driverCode.value = code;
+    }
+
+    function num(el) {
+      return parseFloat((el && el.value) || '0') || 0;
+    }
+
+    function fmt(value) {
+      const n = Math.round((value + Number.EPSILON) * 100) / 100;
+      return n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    }
+
+    function sumGroup(group) {
+      return Array.from(document.querySelectorAll('.js-sheet-amt[data-group="' + group + '"]'))
+        .reduce(function (total, el) { return total + num(el); }, 0);
+    }
+
+    function refreshTotals() {
+      const account = sumGroup('account');
+      const transport = sumGroup('transport');
+      const sundry = sumGroup('sundry');
+      const deductions = sumGroup('deduction');
+      const entitlements = account + transport + sundry;
+      const setText = function (id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = fmt(value);
+      };
+      setText('totAccount', account);
+      setText('totTransport', transport);
+      setText('totSundry', sundry);
+      setText('totEntitlements', entitlements);
+      setText('totDeductions', deductions);
+      setText('totNet', entitlements - deductions);
+    }
+
+    if (dateInput) dateInput.addEventListener('change', refreshWeekday);
+    if (driverSelect) driverSelect.addEventListener('change', fillDriverCode);
+    document.querySelectorAll('.js-sheet-amt').forEach(function (el) {
+      el.addEventListener('input', refreshTotals);
+    });
+    refreshWeekday();
+    fillDriverCode();
+    refreshTotals();
+  })();
+</script>
+{% endblock %}
