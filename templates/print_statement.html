@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>كشف حساب {{ subcontractor.name }}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #122033; margin: 0; }
+    .meta { text-align: center; margin: 4px 0 12px; font-size: 13px; color: #334155; }
+    .account-box {
+      border: 1px solid #1d4f91;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .account-box h2 { margin: 0 0 4px; font-size: 18px; color: #1d4f91; }
+    .account-box .sub { font-size: 12px; color: #475569; }
+    .totals { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .totals div {
+      flex: 1;
+      min-width: 110px;
+      border: 1px solid #1d4f91;
+      padding: 7px 8px;
+      text-align: center;
+    }
+    .totals span { display: block; font-size: 11px; color: #475569; }
+    .totals strong { display: block; margin-top: 2px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8aa4c8; padding: 5px 6px; font-size: 11px; text-align: right; vertical-align: top; }
+    th { background: #1d4f91; color: #fff; }
+    .desc { font-weight: 600; }
+    .detail { color: #334155; font-size: 10px; margin-top: 2px; }
+    tfoot td { font-weight: bold; background: #eef4fb; }
+    .signs { display: flex; justify-content: space-between; margin-top: 28px; font-size: 12px; }
+    .signs div { text-align: center; min-width: 140px; }
+    .signs span { display: block; margin-top: 28px; border-top: 1px solid #94a3b8; padding-top: 4px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  {% include '_print_letterhead.html' %}
+  <div class="meta">كشف حساب مقاول باطن — الأعمال والبنود والدفعات</div>
+
+  <div class="account-box">
+    <h2>{{ subcontractor.display_code }} — {{ subcontractor.name }}</h2>
+    <div class="sub">تصنيف جهة التعامل: {{ subcontractor.entity_kind or '-' }}</div>
+  </div>
+
+  <div class="totals">
+    <div><span>الأعمال المنفذة</span><strong>{{ statement.total_works|groupnum }}</strong></div>
+    <div><span>المسدد</span><strong>{{ statement.total_paid|groupnum }}</strong></div>
+    <div><span>الاستقطاعات</span><strong>{{ statement.total_deductions|groupnum }}</strong></div>
+    <div><span>إفراج ضمان</span><strong>{{ statement.total_retention_released|groupnum }}</strong></div>
+    <div><span>المتبقي</span><strong>{{ statement.net_due|groupnum }}</strong></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:28px;">م</th>
+        <th style="width:78px;">التاريخ</th>
+        <th style="width:90px;">المصدر</th>
+        <th style="width:90px;">المرجع</th>
+        <th>البيان / البند</th>
+        <th style="width:80px;">مدين</th>
+        <th style="width:80px;">دائن</th>
+        <th style="width:90px;">الرصيد</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in statement.movements %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ row.date or '-' }}</td>
+          <td>{{ row.source }}</td>
+          <td>{{ row.reference }}</td>
+          <td>
+            <div class="desc">{{ row.description }}</div>
+            {% if row.detail %}<div class="detail">{{ row.detail }}</div>{% endif %}
+          </td>
+          <td>{{ row.debit|groupnum }}</td>
+          <td>{{ row.credit|groupnum }}</td>
+          <td>{{ row.running_balance|groupnum }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" style="text-align:center;">لا توجد حركات على هذا الحساب.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="7">الرصيد المتبقي النهائي</td>
+        <td>{{ statement.net_due|groupnum }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="signs">
+    <div>المحاسب<span>التوقيع</span></div>
+    <div>المراجع<span>التوقيع</span></div>
+    <div>مدير الحسابات<span>التوقيع</span></div>
+  </div>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
