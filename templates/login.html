@@ -1,0 +1,26 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="glass-card p-4 p-md-5 shadow-sm">
+  <div class="login-brand">
+    <img src="{{ url_for('static', filename='company-logo-desktop.png') }}" alt="شعار شركة الشيخ للمقاولات العمومية"
+         onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='{{ url_for('static', filename='company-logo-transparent.png') }}';}">
+    <h1>شركة الشيخ للمقاولات العمومية</h1>
+    <p>نظام محاسبات المقاولات</p>
+  </div>
+  <h3 class="section-title mb-2">تسجيل الدخول</h3>
+  <p class="text-muted mb-4">ادخل بيانات حسابك للوصول إلى النظام.</p>
+  <form method="post" class="row g-3">
+    <div class="col-12">
+      <label class="form-label">اسم المستخدم</label>
+      <input class="form-control" name="username" required autocomplete="username">
+    </div>
+    <div class="col-12">
+      <label class="form-label">كلمة المرور</label>
+      <input type="password" class="form-control" name="password" required autocomplete="current-password">
+    </div>
+    <div class="col-12 d-grid">
+      <button class="btn btn-cyan btn-lg">دخول</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
