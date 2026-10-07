@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>حساب سواقين الجرارات و القلابات</title>
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #111; margin: 0; }
+    table.sheet { width: 100%; border-collapse: collapse; }
+    .sheet th, .sheet td { border: 1px solid #8aa4c8; padding: 5px 7px; font-size: 12px; }
+    .head { background: #1d4f91; color: #fff; text-align: center; font-size: 16px; }
+    .subhead { background: #eef4fb; text-align: center; font-weight: bold; }
+    .label { background: #f7f9fc; font-weight: bold; width: 22%; }
+    .amt { text-align: left; direction: ltr; width: 18%; }
+    .tot { background: #eef4fb; font-weight: bold; }
+    .signs { display: flex; justify-content: flex-end; margin-top: 18px; font-size: 13px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  {% include '_print_letterhead.html' %}
+  {% macro egp(value) -%}
+    {%- if value and value != 0 -%}ج.م. {{ value|groupnum }}{%- else -%}- ج.م.{%- endif -%}
+  {%- endmacro %}
+  {% set amounts = amounts or {} %}
+  <table class="sheet">
+    <thead>
+      <tr><th class="head" colspan="4">حساب سواقين الجرارات و القلابات</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label">التاريخ</td>
+        <td>{{ entry.date or '-' }}</td>
+        <td class="label">اليوم</td>
+        <td>{{ weekday_of(entry.date) or '-' }}</td>
+      </tr>
+      <tr>
+        <td class="label">كود السواق</td>
+        <td>{{ entry.driver_code or '-' }}</td>
+        <td class="label">اسم السواق</td>
+        <td>{{ entry.driver_name }}</td>
+      </tr>
+      <tr>
+        <td class="label">رقم القومى</td>
+        <td>{{ entry.national_id or '-' }}</td>
+        <td class="label">رقم الهاتف</td>
+        <td>{{ entry.phone or '-' }}</td>
+      </tr>
+      <tr>
+        <td class="label">نوع السيارة</td>
+        <td>{{ entry.vehicle_type or '-' }}</td>
+        <td class="label">رقم السيارة</td>
+        <td>{{ entry.tractor_number or '-' }}</td>
+      </tr>
+      <tr>
+        <th class="subhead" colspan="2">الاستحقاقات</th>
+        <th class="subhead" colspan="2">الاستقطاعات</th>
+      </tr>
+      {% set de_len = deduction_fields|length %}
+      {% for field in account_fields %}
+      <tr>
+        <td class="label">{{ field[1] }}</td>
+        <td class="amt">{{ egp(amounts.get(field[0], 0)) }}</td>
+        {% if loop.index0 < de_len %}
+        <td class="label">{{ deduction_fields[loop.index0][1] }}</td>
+        <td class="amt">{{ egp(amounts.get(deduction_fields[loop.index0][0], 0)) }}</td>
+        {% else %}
+        <td></td><td></td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      <tr>
+        <td class="tot">اجمالى حساب سواق</td>
+        <td class="tot amt">{{ egp(entry.driver_account_total) }}</td>
+        <td></td><td></td>
+      </tr>
+      {% for field in transport_fields %}
+      <tr>
+        <td class="label">{{ field[1] }}</td>
+        <td class="amt">{{ egp(amounts.get(field[0], 0)) }}</td>
+        <td></td><td></td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td class="tot">مصاريف النقل</td>
+        <td class="tot amt">{{ egp(entry.transport_total) }}</td>
+        <td></td><td></td>
+      </tr>
+      {% for field in sundry_fields %}
+      <tr>
+        <td class="label">{{ field[1] }}</td>
+        <td class="amt">{{ egp(amounts.get(field[0], 0)) }}</td>
+        <td></td><td></td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td class="tot">اجمالى النثريات</td>
+        <td class="tot amt">{{ egp(entry.sundries_total) }}</td>
+        <td></td><td></td>
+      </tr>
+      <tr>
+        <td class="tot">اجمالى المستحقات</td>
+        <td class="tot amt">{{ egp(entry.entitlements_total or entry.gross_amount) }}</td>
+        <td class="tot">اجمالى الاستقطاعات</td>
+        <td class="tot amt">{{ egp(entry.deductions_total) }}</td>
+      </tr>
+      <tr>
+        <td class="tot" colspan="2">صافى حساب السائق</td>
+        <td class="tot amt" colspan="2">{{ egp(entry.net_amount if entry.details_json else entry.gross_amount) }}</td>
+      </tr>
+      <tr>
+        <td class="label">من فترة</td>
+        <td>{{ entry.period_from or '-' }}</td>
+        <td class="label">إلى فترة</td>
+        <td>{{ entry.period_to or '-' }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="signs">
+    <div>المحاسب / {{ entry.accountant_name or '................' }}</div>
+  </div>
+</body>
+</html>
