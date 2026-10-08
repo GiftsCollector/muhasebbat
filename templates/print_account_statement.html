@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>كشف حساب {{ statement.account.code }} - {{ statement.account.name }}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #122033; margin: 0; }
+    .meta { text-align: center; margin: 4px 0 12px; font-size: 13px; color: #334155; }
+    .account-box {
+      border: 1px solid #1d4f91;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .account-box h2 { margin: 0 0 4px; font-size: 18px; color: #1d4f91; }
+    .account-box .sub { font-size: 12px; color: #475569; }
+    .totals { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .totals div {
+      flex: 1;
+      min-width: 120px;
+      border: 1px solid #1d4f91;
+      padding: 7px 8px;
+      text-align: center;
+    }
+    .totals span { display: block; font-size: 11px; color: #475569; }
+    .totals strong { display: block; margin-top: 2px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #8aa4c8; padding: 5px 6px; font-size: 11px; text-align: right; vertical-align: top; }
+    th { background: #1d4f91; color: #fff; }
+    .desc { font-weight: 600; }
+    .detail { color: #334155; font-size: 10px; margin-top: 2px; }
+    tfoot td { font-weight: bold; background: #eef4fb; }
+    .open-row td { background: #f8fafc; font-weight: 600; }
+    .signs { display: flex; justify-content: space-between; margin-top: 28px; font-size: 12px; }
+    .signs div { text-align: center; min-width: 140px; }
+    .signs span { display: block; margin-top: 28px; border-top: 1px solid #94a3b8; padding-top: 4px; }
+    h3 { margin: 18px 0 8px; font-size: 14px; color: #1d4f91; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  {% include '_print_letterhead.html' %}
+  <div class="meta">
+    {% if statement.from_date or statement.to_date %}
+      الفترة: {{ statement.from_date or 'من البداية' }} إلى {{ statement.to_date or 'آخر حركة' }}
+    {% else %}
+      كشف شامل بكل الحركات المرحلة
+    {% endif %}
+  </div>
+
+  <div class="account-box">
+    <div>
+      <h2>{{ statement.account.code }} — {{ statement.account.name }}</h2>
+      <div class="sub">الفئة: {{ statement.account.category or '-' }} · طبيعة الحساب: {{ statement.nature }}</div>
+    </div>
+    <div class="sub" style="text-align:left;">
+      <div>عدد الحركات: {{ statement.movements|length }}</div>
+    </div>
+  </div>
+
+  <div class="totals">
+    <div><span>الرصيد الافتتاحي</span><strong>{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</strong></div>
+    <div><span>إجمالي المدين</span><strong>{{ statement.period_debit|groupnum }}</strong></div>
+    <div><span>إجمالي الدائن</span><strong>{{ statement.period_credit|groupnum }}</strong></div>
+    <div><span>الرصيد الختامي</span><strong>{{ statement.closing_display|groupnum }} {{ statement.closing_side }}</strong></div>
+  </div>
+
+  {% if driver_trips %}
+    <h3>نقلات السائق {{ driver_trips.driver_name }}</h3>
+    <div class="meta" style="text-align:right;">
+      عدد النقلات: {{ driver_trips.count }} —
+      إجمالي المسافات: {{ driver_trips.distance_total|groupnum }} كم
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>التاريخ</th><th>البون</th><th>النوع</th><th>من / إلى</th><th>المسافة كم</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in driver_trips.trips %}
+          <tr>
+            <td>{{ item.date or '-' }}</td>
+            <td>{{ item.document_number }}</td>
+            <td>{{ item.trip_type or '-' }}</td>
+            <td>{{ item.notes or '-' }}</td>
+            <td>{{ item.distance_km|groupnum }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">لا توجد نقلات مبيعات لهذا السائق.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <h3>حركة الحساب</h3>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:28px;">م</th>
+        <th style="width:78px;">التاريخ</th>
+        <th style="width:88px;">المرجع</th>
+        <th>البيان</th>
+        <th style="width:70px;">الكمية</th>
+        <th style="width:130px;">الحساب المقابل</th>
+        <th style="width:80px;">مدين</th>
+        <th style="width:80px;">دائن</th>
+        <th style="width:90px;">الرصيد</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="open-row">
+        <td colspan="8">رصيد أول المدة</td>
+        <td>{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</td>
+      </tr>
+      {% for line in statement.movements %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ line.date or '-' }}</td>
+          <td>{{ line.reference }}</td>
+          <td>
+            <div class="desc">{{ line.title or line.description }}</div>
+            {% if line.detail %}<div class="detail">{{ line.detail }}</div>{% endif %}
+            {% if line.project and line.project != '-' %}<div class="detail">المشروع: {{ line.project }}</div>{% endif %}
+          </td>
+          <td>{{ line.quantity_label or '-' }}</td>
+          <td>{{ line.counter_account }}</td>
+          <td>{{ line.debit|groupnum }}</td>
+          <td>{{ line.credit|groupnum }}</td>
+          <td>{{ line.running_display|groupnum }} {{ line.running_side }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9" style="text-align:center;">لا توجد حركات مرحلة على هذا الحساب.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6">الإجمالي / الرصيد الختامي</td>
+        <td>{{ statement.period_debit|groupnum }}</td>
+        <td>{{ statement.period_credit|groupnum }}</td>
+        <td>{{ statement.closing_display|groupnum }} {{ statement.closing_side }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="signs">
+    <div>المحاسب<span>التوقيع</span></div>
+    <div>المراجع<span>التوقيع</span></div>
+    <div>مدير الحسابات<span>التوقيع</span></div>
+  </div>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
