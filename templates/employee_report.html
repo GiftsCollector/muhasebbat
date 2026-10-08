@@ -1,0 +1,216 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">تقرير الموظف</h2>
+          <p class="mb-1 fw-semibold">{{ employee.display_name }}</p>
+          <div class="small text-muted">الكود: {{ employee.display_code }} · الوظيفة: {{ employee.payroll_job_title }}{% if account %} · الحساب: {{ account.code }}{% endif %}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 no-print">
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('employees') }}">العودة للموظفين</a>
+          <a class="btn btn-cyan btn-sm" href="{{ url_for('print_employee_report', employee_id=employee.id, from_date=from_date, to_date=to_date) }}" target="_blank"><i class="bi bi-printer"></i> طباعة / PDF</a>
+        </div>
+      </div>
+      <form method="get" class="row g-2 mt-3 align-items-end no-print">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">عرض الفترة</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('employee_report', employee_id=employee.id) }}">الشهر الحالي</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">أيام الحضور</div>
+          <div class="h5 mb-0">{{ attendance_stats.work_days|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">أيام الإجازة / الغياب</div>
+          <div class="h5 mb-0">{{ attendance_stats.vacation_days|groupnum }} / {{ attendance_stats.absent_days|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">صافي المرتبات / المصروف</div>
+          <div class="h5 mb-0">{{ payroll_net_total|groupnum }} / {{ paid_total|groupnum }}</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card p-3 h-100">
+          <div class="small text-muted">المتبقي له</div>
+          <div class="h5 mb-0">{{ remaining|groupnum }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="glass-card p-4 shadow-sm h-100">
+      <h5 class="mb-3">بيانات الموظف</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless align-middle mb-0">
+          <tbody>
+            <tr><th class="text-muted" style="width:40%">الاسم</th><td>{{ employee.name }}</td></tr>
+            <tr><th class="text-muted">الميزة</th><td>{{ employee.tag or '-' }}</td></tr>
+            <tr><th class="text-muted">الوظيفة</th><td>{{ employee.payroll_job_title }}</td></tr>
+            <tr><th class="text-muted">البلد</th><td>{{ employee.payroll_hometown or '-' }}</td></tr>
+            <tr><th class="text-muted">موقع العمل</th><td>{{ employee.payroll_site or '-' }}</td></tr>
+            <tr><th class="text-muted">المرتب الأساسي</th><td>{{ employee.basic_salary|groupnum }}</td></tr>
+            <tr><th class="text-muted">الاتصال</th><td>{{ employee.contact_info or '-' }}</td></tr>
+            <tr><th class="text-muted">ملاحظات</th><td>{{ employee.notes or '-' }}</td></tr>
+            <tr><th class="text-muted">الحالة</th><td>{% if employee.is_active %}نشط{% else %}غير نشط{% endif %}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="glass-card p-4 shadow-sm h-100">
+      <h5 class="mb-3">ملخص الحضور</h5>
+      {% if attendance_by_status %}
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>الحالة</th><th>عدد الأيام</th></tr></thead>
+            <tbody>
+              {% for status, count in attendance_by_status.items() %}
+                <tr><td>{{ status }}</td><td>{{ count|groupnum }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info mb-0">لا يوجد حضور مسجّل في الفترة المحددة.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">سجل الحضور</h5>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>الحالة</th><th>حضور</th><th>انصراف</th><th>الحفظ</th><th>ملاحظة</th></tr></thead>
+          <tbody>
+            {% for item in attendance_rows %}
+              <tr>
+                <td>{{ item.date }}</td>
+                <td>{{ item.status }}</td>
+                <td>{{ item.check_in or '-' }}</td>
+                <td>{{ item.check_out or '-' }}</td>
+                <td>{{ item.record_status or 'مرحل' }}</td>
+                <td>{{ item.notes or '-' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="text-center text-muted">لا توجد أيام في هذه الفترة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">كشوف المرتبات</h5>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead><tr><th>الشهر</th><th>أيام العمل</th><th>المستحق</th><th>خصم يومية</th><th>خصم نقدي</th><th>الاستقطاعات</th><th>الصافي</th><th>الحالة</th><th></th></tr></thead>
+          <tbody>
+            {% for slip in payroll_slips %}
+              <tr>
+                <td>{{ slip.period_month }}</td>
+                <td>{{ slip.work_days|groupnum }}</td>
+                <td>{{ slip.additions_total|groupnum }}</td>
+                <td>{{ slip.daily_deduction_amount|groupnum }}</td>
+                <td>{{ slip.other_deductions|groupnum }}</td>
+                <td>{{ slip.deductions_total|groupnum }}</td>
+                <td class="fw-semibold">{{ slip.net_salary|groupnum }}</td>
+                <td>{{ slip.status }}</td>
+                <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('print_payslip', slip_id=slip.id) }}" target="_blank">قسيمة</a></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا توجد كشوف مرتب في هذه الفترة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">صرف المرتبات</h5>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>المرجع</th><th>الطريقة</th><th>الخزنة</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+          <tbody>
+            {% for item in salary_payments %}
+              <tr>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ item.document_number }}</td>
+                <td>{{ item.payment_method }}</td>
+                <td>{{ item.treasury_account.name if item.treasury_account else '-' }}</td>
+                <td>{{ item.amount|groupnum }}</td>
+                <td>{{ item.notes or '-' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="text-center text-muted">لا يوجد صرف مرتبات في هذه الفترة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h5 class="mb-0">كشف الحساب</h5>
+        {% if account %}
+          {% with account_id=account.id %}{% include '_statement_btn.html' %}{% endwith %}
+        {% endif %}
+      </div>
+      {% if statement %}
+        <div class="row g-3 mb-3">
+          <div class="col-md-3"><div class="small text-muted">افتتاحي</div><div class="fw-semibold">{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</div></div>
+          <div class="col-md-3"><div class="small text-muted">مدين الفترة</div><div class="fw-semibold">{{ statement.period_debit|groupnum }}</div></div>
+          <div class="col-md-3"><div class="small text-muted">دائن الفترة</div><div class="fw-semibold">{{ statement.period_credit|groupnum }}</div></div>
+          <div class="col-md-3"><div class="small text-muted">ختامي</div><div class="fw-semibold">{{ statement.closing_display|groupnum }} {{ statement.closing_side }}</div></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>التاريخ</th><th>المرجع</th><th>البيان</th><th>الحساب المقابل</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+            <tbody>
+              <tr class="table-light"><td colspan="6" class="text-end">رصيد أول المدة</td><td class="fw-semibold">{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</td></tr>
+              {% for line in statement.movements %}
+                <tr>
+                  <td>{{ line.date or '-' }}</td>
+                  <td>{{ line.reference }}</td>
+                  <td>{{ line.description }}</td>
+                  <td>{{ line.counter_account }}</td>
+                  <td>{{ line.debit|groupnum }}</td>
+                  <td>{{ line.credit|groupnum }}</td>
+                  <td class="fw-semibold">{{ line.running_display|groupnum }} {{ line.running_side }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="7" class="text-center text-muted">لا توجد حركات مرحلة في هذه الفترة.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="alert alert-info mb-0">لا يوجد حساب مرتبط بهذا الموظف بعد.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
