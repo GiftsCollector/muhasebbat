@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>تقرير الموظف {{ employee.display_name }}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    body { font-family: Tahoma, Arial, sans-serif; color: #111; margin: 0; }
+    .sheet { border: 2px solid #1d4f91; padding: 14px 16px 12px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .brand { text-align: center; flex: 1; }
+    .brand h1 { margin: 0; font-size: 20px; color: #1d4f91; }
+    .meta { font-size: 12px; min-width: 120px; }
+    .title { text-align: center; margin: 8px 0 12px; font-size: 18px; font-weight: bold; color: #1d4f91; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { border: 1px solid #8aa4c8; padding: 5px 6px; font-size: 12px; }
+    th { background: #1d4f91; color: #fff; }
+    .label { background: #eef4fb; font-weight: bold; width: 22%; }
+    h2 { font-size: 14px; color: #1d4f91; margin: 16px 0 6px; }
+    .cards { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin: 10px 0 4px; }
+    .card { border: 1px solid #1d4f91; padding: 8px; text-align: center; }
+    .card span { display: block; font-size: 11px; color: #555; }
+    .card strong { font-size: 14px; }
+    .signs { display: flex; justify-content: space-between; margin-top: 22px; font-size: 13px; }
+    .muted { color: #555; font-size: 12px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  <div class="no-print" style="padding: 8px 12px;">
+    <button onclick="window.print()">طباعة / حفظ PDF</button>
+  </div>
+  <div class="sheet">
+    <div class="top">
+      <div class="meta">
+        <div>الساعة</div>
+        <strong>{{ print_time }}</strong>
+      </div>
+      <div class="brand">
+        <h1>{{ company_name }}</h1>
+      </div>
+      <div class="meta" style="text-align:left;">
+        <div>التاريخ: {{ print_date }}</div>
+        <div>اليوم: {{ weekday_name or '-' }}</div>
+      </div>
+    </div>
+    <div class="title">تقرير الموظف</div>
+    <p class="muted" style="text-align:center;margin-top:-6px;">
+      الفترة: {{ from_date or 'من البداية' }} إلى {{ to_date or 'آخر حركة' }}
+    </p>
+
+    <table>
+      <tr>
+        <td class="label">كود الموظف</td>
+        <td>{{ employee.display_code }}</td>
+        <td class="label">اسم الموظف</td>
+        <td>{{ employee.display_name }}</td>
+      </tr>
+      <tr>
+        <td class="label">الوظيفة</td>
+        <td>{{ employee.payroll_job_title }}</td>
+        <td class="label">موقع العمل</td>
+        <td>{{ employee.payroll_site or '-' }}</td>
+      </tr>
+      <tr>
+        <td class="label">البلد</td>
+        <td>{{ employee.payroll_hometown or '-' }}</td>
+        <td class="label">المرتب الأساسي</td>
+        <td>{{ employee.basic_salary|groupnum }}</td>
+      </tr>
+      <tr>
+        <td class="label">الاتصال</td>
+        <td>{{ employee.contact_info or '-' }}</td>
+        <td class="label">الحساب</td>
+        <td>{% if account %}{{ account.code }} — {{ account.name }}{% else %}-{% endif %}</td>
+      </tr>
+    </table>
+
+    <div class="cards">
+      <div class="card"><span>أيام الحضور</span><strong>{{ attendance_stats.work_days|groupnum }}</strong></div>
+      <div class="card"><span>إجازة / غياب</span><strong>{{ attendance_stats.vacation_days|groupnum }} / {{ attendance_stats.absent_days|groupnum }}</strong></div>
+      <div class="card"><span>صافي المرتبات / المصروف</span><strong>{{ payroll_net_total|groupnum }} / {{ paid_total|groupnum }}</strong></div>
+      <div class="card"><span>المتبقي له</span><strong>{{ remaining|groupnum }}</strong></div>
+    </div>
+
+    <h2>سجل الحضور</h2>
+    <table>
+      <thead><tr><th>التاريخ</th><th>الحالة</th><th>حضور</th><th>انصراف</th><th>الحفظ</th><th>ملاحظة</th></tr></thead>
+      <tbody>
+        {% for item in attendance_rows %}
+          <tr>
+            <td>{{ item.date }}</td>
+            <td>{{ item.status }}</td>
+            <td>{{ item.check_in or '-' }}</td>
+            <td>{{ item.check_out or '-' }}</td>
+            <td>{{ item.record_status or 'مرحل' }}</td>
+            <td>{{ item.notes or '-' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">لا توجد أيام في هذه الفترة.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>كشوف المرتبات</h2>
+    <table>
+      <thead><tr><th>الشهر</th><th>أيام العمل</th><th>المستحق</th><th>خصم يومية</th><th>خصم عام</th><th>الاستقطاعات</th><th>الصافي</th><th>الحالة</th></tr></thead>
+      <tbody>
+        {% for slip in payroll_slips %}
+          <tr>
+            <td>{{ slip.period_month }}</td>
+            <td>{{ slip.work_days|groupnum }}</td>
+            <td>{{ slip.additions_total|groupnum }}</td>
+            <td>{{ slip.daily_deduction_amount|groupnum }}</td>
+            <td>{{ slip.other_deductions|groupnum }}</td>
+            <td>{{ slip.deductions_total|groupnum }}</td>
+            <td>{{ slip.net_salary|groupnum }}</td>
+            <td>{{ slip.status }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8">لا توجد كشوف مرتب في هذه الفترة.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>صرف المرتبات</h2>
+    <table>
+      <thead><tr><th>التاريخ</th><th>المرجع</th><th>الطريقة</th><th>الخزنة</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+      <tbody>
+        {% for item in salary_payments %}
+          <tr>
+            <td>{{ item.date or '-' }}</td>
+            <td>{{ item.document_number }}</td>
+            <td>{{ item.payment_method }}</td>
+            <td>{{ item.treasury_account.name if item.treasury_account else '-' }}</td>
+            <td>{{ item.amount|groupnum }}</td>
+            <td>{{ item.notes or '-' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">لا يوجد صرف مرتبات في هذه الفترة.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>كشف الحساب</h2>
+    {% if statement %}
+      <p class="muted">
+        افتتاحي: {{ statement.opening_display|groupnum }} {{ statement.opening_side }} —
+        مدين: {{ statement.period_debit|groupnum }} —
+        دائن: {{ statement.period_credit|groupnum }} —
+        ختامي: {{ statement.closing_display|groupnum }} {{ statement.closing_side }}
+      </p>
+      <table>
+        <thead><tr><th>التاريخ</th><th>المرجع</th><th>البيان</th><th>الحساب المقابل</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+        <tbody>
+          <tr><td colspan="6">رصيد أول المدة</td><td>{{ statement.opening_display|groupnum }} {{ statement.opening_side }}</td></tr>
+          {% for line in statement.movements %}
+            <tr>
+              <td>{{ line.date or '-' }}</td>
+              <td>{{ line.reference }}</td>
+              <td>{{ line.description }}</td>
+              <td>{{ line.counter_account }}</td>
+              <td>{{ line.debit|groupnum }}</td>
+              <td>{{ line.credit|groupnum }}</td>
+              <td>{{ line.running_display|groupnum }} {{ line.running_side }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7">لا توجد حركات مرحلة في هذه الفترة.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">لا يوجد حساب مرتبط بهذا الموظف بعد.</p>
+    {% endif %}
+
+    <div class="signs">
+      <div>التوقيع / ..................</div>
+      <div>المدير المالى / {{ finance_manager }}</div>
+    </div>
+  </div>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
