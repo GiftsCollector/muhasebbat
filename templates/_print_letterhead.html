@@ -1,0 +1,24 @@
+<style>
+  .print-letterhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+  .print-brand { text-align: center; flex: 1; }
+  .print-logo { height: 58px; max-width: 160px; object-fit: contain; }
+  .print-brand h1 { margin: 4px 0 0; font-size: 20px; color: #1d4f91; }
+  .print-subtitle { margin: 4px 0 0; font-size: 13px; }
+  .print-side { font-size: 12px; min-width: 130px; }
+</style>
+<div class="print-letterhead">
+  <div class="print-side">
+    <div>الساعة</div>
+    <strong>{{ print_time }}</strong>
+  </div>
+  <div class="print-brand">
+    <img class="print-logo" src="{{ url_for('static', filename='company-logo-desktop.png') }}" alt="شعار الشركة"
+         onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='{{ url_for('static', filename='company-logo-transparent.png') }}';}else{this.style.display='none';}">
+    <h1>{{ company_name }}</h1>
+    {% if print_title %}<div class="print-subtitle">{{ print_title }}</div>{% endif %}
+  </div>
+  <div class="print-side" style="text-align:left;">
+    <div>التاريخ: {{ print_date }}</div>
+    <div>اليوم: {{ weekday_name or '-' }}</div>
+  </div>
+</div>
