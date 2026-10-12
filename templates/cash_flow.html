@@ -1,0 +1,43 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">قائمة التدفق النقدي</h2>
+      <p class="text-muted">تحليل التدفقات النقدية الداخلة والخارجة من حسابات الخزنة خلال الفترة.</p>
+      <form method="get" class="row g-2 mt-2 align-items-end">
+        <div class="col-md-3"><label class="form-label mb-1">من تاريخ</label><input type="date" name="from_date" class="form-control" value="{{ from_date }}"></div>
+        <div class="col-md-3"><label class="form-label mb-1">إلى تاريخ</label><input type="date" name="to_date" class="form-control" value="{{ to_date }}"></div>
+        <div class="col-md-3 d-grid"><button class="btn btn-primary btn-sm">تطبيق</button></div>
+        <div class="col-md-3 d-grid"><a class="btn btn-outline-light btn-sm" href="{{ url_for('cash_flow_report') }}">إعادة</a></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3">
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي الداخل</div><div class="h5 mb-0">{{ inflow_total|groupnum }}</div></div></div>
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي الخارج</div><div class="h5 mb-0">{{ outflow_total|groupnum }}</div></div></div>
+      <div class="col-md-4"><div class="glass-card p-3 h-100"><div class="small text-muted">صافي التدفق</div><div class="h5 mb-0">{{ net_operating_cash|groupnum }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">تفاصيل التدفق</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>المرجع</th><th>الوصف</th><th>داخل</th><th>خارج</th></tr></thead>
+          <tbody>
+            {% for line in operating_lines %}
+              <tr><td>{{ line.date or '-' }}</td><td>{{ line.reference }}</td><td>{{ line.description }}</td><td>{{ line.inflow|groupnum }}</td><td>{{ line.outflow|groupnum }}</td></tr>
+            {% else %}
+              <tr><td colspan="5" class="text-muted">لا توجد تدفقات خلال الفترة.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
