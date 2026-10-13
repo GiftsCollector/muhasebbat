@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>{{ print_title }}</title>
+  <style>@page { size: A4 landscape; margin: 8mm 8mm 11mm; }</style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  {% include '_print_toolbar.html' %}
+  {% include '_print_letterhead.html' %}
+  <div class="print-kpis">
+    <div>إجمالي الراتب الأساسي: {{ totals.basic_salary|groupnum }}</div>
+    <div>إجمالي الاستحقاقات: {{ totals.additions|groupnum }}</div>
+    <div>إجمالي الاستقطاعات: {{ totals.deductions|groupnum }}</div>
+    <div>إجمالي الصافي النقدي: {{ totals.net|groupnum }}</div>
+  </div>
+  <table class="print-table">
+    <thead>
+      <tr>
+        <th>م</th>
+        <th>الاسم</th>
+        <th>البلد</th>
+        <th>الوظيفة</th>
+        <th>موقع</th>
+        <th>الراتب الأساسى</th>
+        <th>اليومية</th>
+        <th>أيام / 30</th>
+        <th>الراتب</th>
+        <th>موصلات</th>
+        <th>اضافى</th>
+        <th>منح</th>
+        <th>سلف</th>
+        <th>خصم يومية</th>
+        <th>خصم عام</th>
+        <th>الصافى النقدى</th>
+        <th>ملاحظات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in payroll_rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ row.employee.name }}</td>
+          <td>{{ row.employee.payroll_hometown or '-' }}</td>
+          <td>{{ row.employee.payroll_job_title }}</td>
+          <td>{{ row.employee.payroll_site or '-' }}</td>
+          <td>{{ row.basic_salary|groupnum }}</td>
+          <td>{{ row.daily_rate|groupnum }}</td>
+          <td>{{ row.work_days|groupnum }} / 30</td>
+          <td>{{ row.earned_salary|groupnum }}</td>
+          <td>{{ row.transport|groupnum }}</td>
+          <td>{{ row.overtime|groupnum }}</td>
+          <td>{{ row.incentives|groupnum }}</td>
+          <td>{{ row.advances|groupnum }}</td>
+          <td>{{ row.daily_deduction_amount|groupnum }}</td>
+          <td>{{ row.other_deductions|groupnum }}</td>
+          <td>{{ row.net|groupnum }}</td>
+          <td>{{ row.notes or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="17">لا يوجد موظفون في هذا الشهر.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5">الإجمالي</td>
+        <td>{{ totals.basic_salary|groupnum }}</td>
+        <td></td>
+        <td></td>
+        <td>{{ totals.earned_salary|groupnum }}</td>
+        <td>{{ totals.transport|groupnum }}</td>
+        <td>{{ totals.overtime|groupnum }}</td>
+        <td>{{ totals.incentives|groupnum }}</td>
+        <td>{{ totals.advances|groupnum }}</td>
+        <td>{{ totals.daily_deduction_amount|groupnum }}</td>
+        <td>{{ totals.other_deductions|groupnum }}</td>
+        <td>{{ totals.net|groupnum }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  {% include '_print_signatures.html' %}
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>

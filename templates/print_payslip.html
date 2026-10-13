@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>{{ print_title }}</title>
+  <style>@page { size: A5 landscape; margin: 8mm; }</style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  {% include '_print_toolbar.html' %}
+  <div class="sheet" style="border:2px solid #1d4f91;padding:12px 14px;">
+    {% include '_print_letterhead.html' %}
+    <table class="print-table">
+      <tr>
+        <td class="label" style="background:#eef4fb;width:22%;">كود الموظف</td>
+        <td>{{ employee.display_code if employee else '-' }}</td>
+        <td class="label" style="background:#eef4fb;width:22%;">اسم الموظف</td>
+        <td>{{ employee.name if employee else '-' }}</td>
+      </tr>
+      <tr>
+        <td style="background:#eef4fb;font-weight:800;">الوظيفة</td>
+        <td>{{ employee.payroll_job_title if employee else '-' }}</td>
+        <td style="background:#eef4fb;font-weight:800;">عنوان السكن</td>
+        <td>{{ employee.payroll_hometown if employee else '-' }}</td>
+      </tr>
+      <tr>
+        <td style="background:#eef4fb;font-weight:800;">الراتب الأساسى</td>
+        <td>{{ slip.basic_salary|groupnum }}</td>
+        <td style="background:#eef4fb;font-weight:800;">سلف</td>
+        <td>{{ slip.advances|groupnum }}</td>
+      </tr>
+      <tr>
+        <td style="background:#eef4fb;font-weight:800;">عدد ايام العمل</td>
+        <td>{{ slip.work_days|groupnum }} / 30</td>
+        <td style="background:#eef4fb;font-weight:800;">خصم يومية / عام</td>
+        <td>{{ slip.daily_deduction_amount|groupnum }} / {{ ((slip.delay_deduction or 0) + (slip.permission_deduction or 0) + (slip.other_deductions or 0))|groupnum }}</td>
+      </tr>
+      <tr>
+        <td style="background:#eef4fb;font-weight:800;">الراتب</td>
+        <td>{{ slip.earned_salary_value|groupnum }}</td>
+        <td style="background:#eef4fb;font-weight:800;">ملاحظات</td>
+        <td>{{ slip.notes or '-' }}</td>
+      </tr>
+      <tr>
+        <td style="background:#eef4fb;font-weight:800;">موصلات</td>
+        <td>{{ slip.transport|groupnum }}</td>
+        <td style="background:#eef4fb;font-weight:800;">الاضافى</td>
+        <td>{{ slip.overtime|groupnum }}</td>
+      </tr>
+      <tr>
+        <td style="background:#eef4fb;font-weight:800;">منح</td>
+        <td colspan="3">{{ slip.incentives|groupnum }}</td>
+      </tr>
+    </table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+      <div>
+        <h3 style="margin:0 0 6px;text-align:center;background:#1d4f91;color:#fff;padding:6px;font-size:14px;">الاستحقاقات</h3>
+        <table class="print-table">
+          {% for label, amount in entitlements %}
+            <tr><td>{{ label }}</td><td>{{ amount|groupnum }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      <div>
+        <h3 style="margin:0 0 6px;text-align:center;background:#1d4f91;color:#fff;padding:6px;font-size:14px;">الاستقطاعات</h3>
+        <table class="print-table">
+          {% for label, amount in deductions %}
+            <tr><td>{{ label }}</td><td>{{ amount|groupnum }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    <div class="print-kpis" style="margin-top:12px;">
+      <div>اجمالى المستحق: {{ entitlements_total|groupnum }}</div>
+      <div>اجمالى المستقطع: {{ deductions_total|groupnum }}</div>
+    </div>
+    <div style="text-align:center;margin-top:12px;font-size:18px;font-weight:800;color:#1d4f91;">صافى الراتب {{ slip.net_salary|groupnum }} ج.م.</div>
+    {% include '_print_signatures.html' %}
+  </div>
+  <script>window.addEventListener('load', function(){ window.print(); });</script>
+</body>
+</html>
