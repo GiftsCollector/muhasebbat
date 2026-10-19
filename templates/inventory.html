@@ -1,0 +1,311 @@
+{% extends 'layout.html' %}
+{% block content %}
+{% set tab = active_tab or 'balances' %}
+<div class="row g-3 fade-up screen-stack">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">دورة المخزن</h2>
+          <p class="text-muted mb-0">تكويد الأصناف، الوارد، المنصرف، وأرصدة الأصناف في شاشة واحدة. المورد بيتسجل من أوامر الشراء.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('print_setup', screen='inventory') }}"><i class="bi bi-printer"></i> طباعة تقرير</a>
+          <a class="btn btn-outline-light" href="{{ url_for('export_screen', screen='inventory') }}"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+          <a class="btn btn-outline-light" href="{{ url_for('inventory_report') }}">تقرير التقييم</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">عدد الأصناف</div><div class="h5 mb-0">{{ totals.items|qtynum }}</div></div></div>
+  <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي الوارد</div><div class="h5 mb-0">{{ totals.in_qty|qtynum }}</div></div></div>
+  <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">إجمالي المنصرف</div><div class="h5 mb-0">{{ totals.out_qty|qtynum }}</div></div></div>
+  <div class="col-md-3"><div class="glass-card p-3 h-100"><div class="small text-muted">قيمة الأرصدة</div><div class="h5 mb-0">{{ totals.value|groupnum }}</div></div></div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item"><a class="nav-link {% if tab == 'items' %}active{% endif %}" href="{{ url_for('inventory', tab='items') }}">تكويد الأصناف</a></li>
+        <li class="nav-item"><a class="nav-link {% if tab == 'in' %}active{% endif %}" href="{{ url_for('inventory', tab='in') }}">الوارد</a></li>
+        <li class="nav-item"><a class="nav-link {% if tab == 'out' %}active{% endif %}" href="{{ url_for('inventory', tab='out') }}">المنصرف</a></li>
+        <li class="nav-item"><a class="nav-link {% if tab == 'balances' %}active{% endif %}" href="{{ url_for('inventory', tab='balances') }}">أرصدة الأصناف</a></li>
+      </ul>
+
+      {% if tab == 'items' %}
+      <p class="text-muted small">كود الصنف بيتولّد تلقائيًا ولا يتكرر. الأصناف القديمة بتتكود من الحركات السابقة.</p>
+      <form method="post" class="mb-4">
+        <input type="hidden" name="action" value="save_item">
+        <input type="hidden" name="tab" value="items">
+        <div class="row g-3">
+          <div class="col-md-3"><label class="form-label">كود الصنف</label><input class="form-control" name="code" placeholder="{{ next_item_code }}"><div class="form-text">سيبه فاضي للكود التلقائي.</div></div>
+          <div class="col-md-4"><label class="form-label">اسم الصنف</label><input class="form-control" name="name" required placeholder="أسمنت / حديد / فلتر"></div>
+          <div class="col-md-2">
+            <label class="form-label">الوحدة</label>
+            <select class="form-select js-searchable-select" name="unit">
+              <option value="">—</option>
+              {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3"><label class="form-label">ملاحظات</label><input class="form-control" name="notes"></div>
+        </div>
+        <button class="btn btn-cyan mt-3">حفظ الصنف</button>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>الكود</th><th>اسم الصنف</th><th>الوحدة</th><th>ملاحظات</th><th></th></tr></thead>
+          <tbody>
+            {% for item in stock_items %}
+              <tr>
+                <td>{{ item.display_code }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.unit or '-' }}</td>
+                <td>{{ item.notes or '-' }}</td>
+                <td class="text-nowrap">
+                  <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editItem{{ item.id }}">تعديل</button>
+                  <form method="post" class="d-inline" onsubmit="return confirm('حذف تكويد الصنف؟ الحركات القديمة هتفضل.');">
+                    <input type="hidden" name="action" value="delete_item">
+                    <input type="hidden" name="tab" value="items">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <button class="btn btn-sm btn-outline-danger">حذف</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted">لا توجد أصناف مكوّدة بعد</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for item in stock_items %}
+      <div class="modal fade" id="editItem{{ item.id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <form method="post">
+              <input type="hidden" name="action" value="update_item">
+              <input type="hidden" name="tab" value="items">
+              <input type="hidden" name="item_id" value="{{ item.id }}">
+              <div class="modal-header"><h5 class="modal-title">تعديل الصنف {{ item.display_code }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+              <div class="modal-body">
+                <div class="mb-3"><label class="form-label">الكود</label><input class="form-control" name="code" value="{{ item.code or item.display_code }}" required></div>
+                <div class="mb-3"><label class="form-label">اسم الصنف</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                <div class="mb-3">
+                  <label class="form-label">الوحدة</label>
+                  <select class="form-select js-searchable-select" name="unit">
+                    <option value="">—</option>
+                    {% for unit in unit_options %}<option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="mb-0"><label class="form-label">ملاحظات</label><input class="form-control" name="notes" value="{{ item.notes or '' }}"></div>
+              </div>
+              <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button class="btn btn-cyan">حفظ التعديل</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% if tab == 'in' %}
+      <p class="text-muted small">الوارد يزيد كمية وتكلفة حساب المخزن. استلام أوامر الشراء بيظهر هنا تلقائيًا.</p>
+      <form method="post" class="mb-4 js-inv-move-form">
+        <input type="hidden" name="action" value="movement">
+        <input type="hidden" name="tab" value="in">
+        <input type="hidden" name="transaction_type" value="وارد">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">المشروع</label>
+            <select class="form-select js-searchable-select" name="project_id" required>
+              <option value="">اختر المشروع</option>
+              {% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">المخزن / الحساب المصدر</label>
+            {% with name='warehouse_name', groups=warehouse_groups, selected=default_warehouse, placeholder='اختر المخزن أو الخزنة أو الحساب', required=true %}
+              {% include '_warehouse_select.html' %}
+            {% endwith %}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">الصنف</label>
+            <select class="form-select js-searchable-select" name="stock_item_id" data-placeholder="اختر الصنف المكوّد">
+              <option value="">اختر الصنف</option>
+              {% for item in stock_items %}<option value="{{ item.id }}" data-unit="{{ item.unit or '' }}">{{ item.display_code }} — {{ item.name }}</option>{% endfor %}
+            </select>
+            <div class="form-text">للصنف فقط. لو مش متكوّد، كوّده من تبويب الأصناف.</div>
+          </div>
+          <div class="col-md-4"><label class="form-label">المستلم</label><input class="form-control" name="recipient_name" placeholder="اسم المستلم"></div>
+          <div class="col-md-4"><label class="form-label">أمين المخزن</label><input class="form-control" name="storekeeper_name" placeholder="اسم أمين المخزن"></div>
+          <div class="col-md-4">
+            <label class="form-label">الوحدة</label>
+            <select class="form-select js-searchable-select js-inv-unit" name="unit">
+              <option value="">—</option>
+              {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3"><label class="form-label">الكمية</label><input type="number" step="any" min="0.01" class="form-control js-inv-qty" name="quantity" required></div>
+          <div class="col-md-3"><label class="form-label">تكلفة الوحدة</label><input type="number" step="0.01" min="0" class="form-control js-inv-cost" name="unit_cost" required></div>
+          <div class="col-md-3"><label class="form-label">إجمالي القيمة</label><input type="number" step="0.01" min="0" class="form-control js-inv-total" name="line_amount" value="0"></div>
+          <div class="col-md-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ today_date }}"></div>
+          <div class="col-12"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        </div>
+        <button class="btn btn-cyan mt-3">حفظ الوارد</button>
+      </form>
+      {% with move_items=in_items, move_kind='in' %}
+        {% include '_inventory_move_table.html' %}
+      {% endwith %}
+      {% endif %}
+
+      {% if tab == 'out' %}
+      <p class="text-muted small">المنصرف يخصم الكمية من المخزن ويحمّل الحساب الوجهة بقيمة الصنف.</p>
+      <form method="post" class="mb-4 js-inv-move-form">
+        <input type="hidden" name="action" value="movement">
+        <input type="hidden" name="tab" value="out">
+        <input type="hidden" name="transaction_type" value="منصرف">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">المشروع</label>
+            <select class="form-select js-searchable-select" name="project_id" required>
+              <option value="">اختر المشروع</option>
+              {% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">المخزن / الحساب المصدر</label>
+            {% with name='warehouse_name', groups=warehouse_groups, selected=default_warehouse, placeholder='اختر المخزن أو الخزنة أو الحساب', required=true %}
+              {% include '_warehouse_select.html' %}
+            {% endwith %}
+          </div>
+          <div class="col-md-4" id="invDestWrap">
+            <label class="form-label" id="invDestLabel">الحساب الوجهة (مطلوب للمنصرف)</label>
+            {% with name='destination_warehouse', groups=warehouse_groups, selected='', placeholder='اختر الحساب الذي سيُحمَّل بالصنف', extra_class='js-inv-dest', required=true %}
+              {% include '_warehouse_select.html' %}
+            {% endwith %}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">الصنف</label>
+            <select class="form-select js-searchable-select" name="stock_item_id" data-placeholder="اختر الصنف المكوّد">
+              <option value="">اختر الصنف</option>
+              {% for item in stock_items %}<option value="{{ item.id }}" data-unit="{{ item.unit or '' }}">{{ item.display_code }} — {{ item.name }}</option>{% endfor %}
+            </select>
+            <div class="form-text">للصنف فقط. لو مش متكوّد، كوّده من تبويب الأصناف.</div>
+          </div>
+          <div class="col-md-4"><label class="form-label">المستلم</label><input class="form-control" name="recipient_name" placeholder="اسم المستلم"></div>
+          <div class="col-md-4">
+            <label class="form-label">المعدة (اختياري)</label>
+            <select class="form-select js-searchable-select" name="equipment_id" data-placeholder="بدون معدة">
+              <option value="">-- بدون معدة --</option>
+              {% for eq in equipment_items|default([]) %}<option value="{{ eq.id }}">{{ eq.display_code }} — {{ eq.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4"><label class="form-label">أمين المخزن</label><input class="form-control" name="storekeeper_name" placeholder="اسم أمين المخزن"></div>
+          <div class="col-md-4">
+            <label class="form-label">الوحدة</label>
+            <select class="form-select js-searchable-select js-inv-unit" name="unit">
+              <option value="">—</option>
+              {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3"><label class="form-label">الكمية</label><input type="number" step="any" min="0.01" class="form-control js-inv-qty" name="quantity" required></div>
+          <div class="col-md-3"><label class="form-label">تكلفة الوحدة</label><input type="number" step="0.01" min="0" class="form-control js-inv-cost" name="unit_cost" placeholder="تلقائي من متوسط المخزن"></div>
+          <div class="col-md-3"><label class="form-label">إجمالي القيمة</label><input type="number" step="0.01" min="0" class="form-control js-inv-total" name="line_amount" value="0"></div>
+          <div class="col-md-3"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" value="{{ today_date }}"></div>
+          <div class="col-12"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+        </div>
+        <button class="btn btn-cyan mt-3">حفظ المنصرف</button>
+      </form>
+      {% with move_items=out_items, move_kind='out' %}
+        {% include '_inventory_move_table.html' %}
+      {% endwith %}
+      {% endif %}
+
+      {% if tab == 'balances' %}
+      <p class="text-muted small mb-3">مجمّع كل صنف: المشروع، المخزن، الكود، الوارد، المنصرف، والرصيد.</p>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>المشروع</th>
+              <th>المخزن</th>
+              <th>كود الصنف</th>
+              <th>الصنف</th>
+              <th>الوارد</th>
+              <th>المنصرف</th>
+              <th>الرصيد</th>
+              <th>متوسط التكلفة</th>
+              <th>القيمة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stock_rows %}
+              <tr>
+                <td>{{ row.project.display_name if row.project else '-' }}</td>
+                <td>{{ row.warehouse }}</td>
+                <td>{{ row.item_code }}</td>
+                <td>{{ row.material }}</td>
+                <td>{{ row.receipt_qty|qtynum }}</td>
+                <td>{{ row.issue_qty|qtynum }}</td>
+                <td class="{% if row.qty < 0 %}text-danger{% endif %}">{{ row.qty|qtynum }}</td>
+                <td>{{ row.avg_cost|paynum }}</td>
+                <td>{{ row.value|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا يوجد رصيد مخزني بعد</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    function lineValue(quantityEl, costEl) {
+      const quantity = parseFloat((quantityEl && quantityEl.value) || '0') || 0;
+      const unitCost = parseFloat((costEl && costEl.value) || '0') || 0;
+      return Math.max(quantity * unitCost, 0);
+    }
+    function bindMoneyFields(quantityEl, costEl, totalEl) {
+      if (!quantityEl || !costEl || !totalEl) return;
+      let syncing = false;
+      function fromQtyCost() {
+        if (syncing) return;
+        syncing = true;
+        totalEl.value = lineValue(quantityEl, costEl).toFixed(2);
+        syncing = false;
+      }
+      function fromTotal() {
+        if (syncing) return;
+        const quantity = parseFloat(quantityEl.value || '0') || 0;
+        const amount = parseFloat(totalEl.value || '0') || 0;
+        if (quantity > 0 && amount > 0) {
+          syncing = true;
+          costEl.value = (amount / quantity).toFixed(4);
+          syncing = false;
+        }
+      }
+      quantityEl.addEventListener('input', fromQtyCost);
+      costEl.addEventListener('input', fromQtyCost);
+      totalEl.addEventListener('input', fromTotal);
+      fromQtyCost();
+    }
+    document.querySelectorAll('.js-inv-move-form, [id^="editInv"] form').forEach(function (form) {
+      bindMoneyFields(
+        form.querySelector('.js-inv-qty, [name="quantity"]'),
+        form.querySelector('.js-inv-cost, [name="unit_cost"]'),
+        form.querySelector('.js-inv-total, [name="line_amount"]')
+      );
+      const itemSelect = form.querySelector('[name="stock_item_id"]');
+      const unitSelect = form.querySelector('.js-inv-unit, [name="unit"]');
+      if (itemSelect && unitSelect) {
+        itemSelect.addEventListener('change', function () {
+          const option = itemSelect.options[itemSelect.selectedIndex];
+          const unit = option && option.getAttribute('data-unit');
+          if (unit) unitSelect.value = unit;
+        });
+      }
+    });
+  })();
+</script>
+{% endblock %}

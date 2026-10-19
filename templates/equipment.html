@@ -1,0 +1,154 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">المعدات والأصول</h2>
+          <p class="text-muted">سجل معدّات المشروع وتتبّع تكاليف الشراء والتشغيل والصيانة والترخيص.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('equipment_cycle') }}">دورة الصيانة</a>
+          <a class="btn btn-outline-light" href="{{ url_for('equipment_reports') }}">تقارير الصيانة والمعدات</a>
+          <a class="btn btn-outline-light" href="{{ url_for('export_screen', screen='equipment') }}"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+          <span class="badge bg-secondary py-2 px-3">عدد المعدات: {{ entries|length }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">سجل معدات جديد</h5>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">اسم المعدة</label><input class="form-control" name="name" required></div>
+        <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">كود المعدة</label><input class="form-control" name="code" placeholder="يُولَّد تلقائيًا إن تُرك فارغًا"></div><div class="col-md-6"><label class="form-label">رقم اللوحة</label><input class="form-control" name="plate_number"></div></div>
+        <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">نوع السيارة</label><input class="form-control" name="vehicle_type" placeholder="قلاب / مقطورة"></div><div class="col-md-6"><label class="form-label">رقم الشاسيه</label><input class="form-control" name="chassis_number"></div></div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label">الحالة</label>
+            <select class="form-select" name="status">{% for status in equipment_statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}</select>
+          </div>
+          <div class="col-md-6"><label class="form-label">تاريخ انتهاء الترخيص</label><input type="date" class="form-control" name="license_expiry"></div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4"><label class="form-label">العداد الحالي</label><input type="number" step="0.01" class="form-control" name="current_meter" value="0"></div>
+          <div class="col-md-4">
+            <label class="form-label">وحدة العداد</label>
+            <select class="form-select" name="meter_unit">{% for unit in meter_units %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}</select>
+          </div>
+          <div class="col-md-4"><label class="form-label">عداد آخر تغيير زيت</label><input type="number" step="0.01" class="form-control" name="last_oil_meter" value="0"></div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6"><label class="form-label">فترة تغيير الزيت</label><input type="number" step="0.01" class="form-control" name="oil_interval" value="10000"></div>
+          <div class="col-md-6"><label class="form-label">الحد المسموح زيادة</label><input type="number" step="0.01" class="form-control" name="oil_tolerance" value="1000"></div>
+        </div>
+        <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">تكلفة الشراء</label><input type="number" step="0.01" class="form-control" name="purchase_cost"></div><div class="col-md-6"><label class="form-label">تكلفة التشغيل</label><input type="number" step="0.01" class="form-control" name="operating_cost"></div></div>
+        <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">الصيانة</label><input type="number" step="0.01" class="form-control" name="maintenance"></div><div class="col-md-6"><label class="form-label">ساعات التشغيل</label><input type="number" step="0.01" class="form-control" name="hours_used"></div></div>
+        <div class="mb-3"><label class="form-label">مشروع مرتبط (اختياري)</label><select class="form-select" name="project_id"><option value="">-- بدون مشروع --</option>{% for item in projects %}<option value="{{ item.id }}">{{ item.code }}</option>{% endfor %}</select></div>
+        <button class="btn btn-cyan">حفظ المعدة</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">سجل المعدات</h5>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-lg-6">
+          <input id="equipSearch" type="text" class="form-control form-control-sm" placeholder="ابحث في اسم المعدة">
+        </div>
+        <div class="col-lg-3">
+          <select id="equipProject" class="form-select form-select-sm">
+            <option value="">-- الكل --</option>
+            {% for project in projects %}
+              <option value="{{ project.code }}">{{ project.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-3">
+          <button id="equipResetFilter" class="btn btn-outline-light btn-sm w-100">إعادة</button>
+        </div>
+      </div>
+      {% if not entries %}
+        <div class="alert alert-info mb-3">لا توجد معدات مسجلة. أضف معدات المشروع لمتابعة تكاليف التشغيل والصيانة.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table id="equipTable" class="table table-borderless table-hover align-middle">
+          <thead><tr><th>الكود</th><th>المعدة</th><th>اللوحة</th><th>الترخيص</th><th>تكلفة الشراء</th><th>تشغيل / صيانة</th><th>مشروع</th><th>إجراءات</th></tr></thead>
+          <tbody>{% for item in entries %}<tr data-search="{{ item.display_code }} {{ item.name }} {{ item.plate_number or '' }}" data-project="{{ item.project.code if item.project else '' }}"><td>{{ item.display_code }}</td><td>{{ item.name }}</td><td>{{ item.plate_number or '-' }}</td><td>{{ item.license_expiry or '-' }}</td><td>{{ item.purchase_cost|paynum }}</td><td>{{ item.operating_cost|paynum }} / {{ item.maintenance|paynum }}</td><td>{{ item.project.display_name if item.project else '-' }}</td><td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equipment_cycle', equipment_id=item.id) }}">دورة</a><button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editEquip{{ item.id }}">تعديل</button><form method="post" action="{{ url_for('delete_operating_document', entity_type='equipment', entity_id=item.id) }}" class="d-inline" onsubmit="return confirm('سيتم حذف المعدة وقيودها. متابعة؟');"><button class="btn btn-sm btn-outline-danger">حذف</button></form></td></tr>{% else %}<tr><td colspan="8" class="text-center text-muted">لا توجد معدات</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      {% for item in entries %}
+        <div class="modal fade" id="editEquip{{ item.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <form method="post" action="{{ url_for('update_equipment', equipment_id=item.id) }}">
+                <div class="modal-header"><h5 class="modal-title">تعديل المعدة {{ item.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body">
+                  <div class="mb-3"><label class="form-label">اسم المعدة</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                  <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">كود المعدة</label><input class="form-control" name="code" value="{{ item.code or item.display_code }}"></div><div class="col-md-6"><label class="form-label">رقم اللوحة</label><input class="form-control" name="plate_number" value="{{ item.plate_number or '' }}"></div></div>
+                  <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">نوع السيارة</label><input class="form-control" name="vehicle_type" value="{{ item.vehicle_type or '' }}"></div><div class="col-md-6"><label class="form-label">رقم الشاسيه</label><input class="form-control" name="chassis_number" value="{{ item.chassis_number or '' }}"></div></div>
+                  <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                      <label class="form-label">الحالة</label>
+                      <select class="form-select" name="status">{% for status in equipment_statuses %}<option value="{{ status }}" {% if item.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select>
+                    </div>
+                    <div class="col-md-6"><label class="form-label">تاريخ انتهاء الترخيص</label><input type="date" class="form-control" name="license_expiry" value="{{ item.license_expiry or '' }}"></div>
+                  </div>
+                  <div class="row g-3 mb-3">
+                    <div class="col-md-4"><label class="form-label">العداد الحالي</label><input type="number" step="0.01" class="form-control" name="current_meter" value="{{ item.current_meter|qtynum }}"></div>
+                    <div class="col-md-4">
+                      <label class="form-label">وحدة العداد</label>
+                      <select class="form-select" name="meter_unit">{% for unit in meter_units %}<option value="{{ unit }}" {% if item.meter_unit == unit %}selected{% endif %}>{{ unit }}</option>{% endfor %}</select>
+                    </div>
+                    <div class="col-md-4"><label class="form-label">عداد آخر تغيير زيت</label><input type="number" step="0.01" class="form-control" name="last_oil_meter" value="{{ item.last_oil_meter|qtynum }}"></div>
+                  </div>
+                  <div class="row g-3 mb-3">
+                    <div class="col-md-6"><label class="form-label">فترة تغيير الزيت</label><input type="number" step="0.01" class="form-control" name="oil_interval" value="{{ item.oil_interval|qtynum }}"></div>
+                    <div class="col-md-6"><label class="form-label">الحد المسموح زيادة</label><input type="number" step="0.01" class="form-control" name="oil_tolerance" value="{{ item.oil_tolerance|qtynum }}"></div>
+                  </div>
+                  <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">تكلفة الشراء</label><input type="number" step="0.01" class="form-control" name="purchase_cost" value="{{ item.purchase_cost|paynum }}"></div><div class="col-md-6"><label class="form-label">تكلفة التشغيل</label><input type="number" step="0.01" class="form-control" name="operating_cost" value="{{ item.operating_cost|paynum }}"></div></div>
+                  <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">الصيانة</label><input type="number" step="0.01" class="form-control" name="maintenance" value="{{ item.maintenance|paynum }}"></div><div class="col-md-6"><label class="form-label">ساعات التشغيل</label><input type="number" step="0.01" class="form-control" name="hours_used" value="{{ item.hours_used|qtynum }}"></div></div>
+                  <div class="mb-3"><label class="form-label">مشروع مرتبط</label><select class="form-select" name="project_id"><option value="">-- بدون مشروع --</option>{% for p in projects %}<option value="{{ p.id }}" {% if item.project_id == p.id %}selected{% endif %}>{{ p.code }}</option>{% endfor %}</select></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ التعديل</button></div>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    const table = document.getElementById('equipTable');
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(r => r.hasAttribute('data-search'));
+    const searchInput = document.getElementById('equipSearch');
+    const projectSelect = document.getElementById('equipProject');
+    const resetBtn = document.getElementById('equipResetFilter');
+
+    function applyFilters() {
+      const searchText = (searchInput?.value || '').toLowerCase().trim();
+      const projectCode = projectSelect?.value || '';
+
+      rows.forEach(row => {
+        const rowText = (row.dataset.search || '').toLowerCase();
+        const rowProject = row.dataset.project || '';
+        const matches = (!searchText || rowText.includes(searchText)) && (!projectCode || rowProject === projectCode);
+        row.style.display = matches ? '' : 'none';
+      });
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    projectSelect?.addEventListener('change', applyFilters);
+    resetBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      if (projectSelect) projectSelect.value = '';
+      applyFilters();
+    });
+  })();
+</script>
+{% endblock %}
