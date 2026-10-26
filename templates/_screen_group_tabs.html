@@ -1,0 +1,20 @@
+{% set tabs = SCREEN_GROUPS.get(group_name) or [] %}
+{% set ns = namespace(count=0) %}
+{% for tab in tabs %}
+  {% if can_endpoint(tab.endpoint) %}{% set ns.count = ns.count + 1 %}{% endif %}
+{% endfor %}
+{% if ns.count > 1 %}
+<div class="col-12 no-print">
+  <div class="glass-card py-2 px-3 shadow-sm">
+    <ul class="nav screen-group-tabs mb-0" role="tablist">
+      {% for tab in tabs %}
+        {% if can_endpoint(tab.endpoint) %}
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == tab.endpoint or request.endpoint in (tab.extra or []) %}active{% endif %}" href="{{ url_for(tab.endpoint) }}">{{ tab.label }}</a>
+        </li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
