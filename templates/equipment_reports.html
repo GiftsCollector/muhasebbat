@@ -1,0 +1,127 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row g-3 fade-up">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">تقارير الصيانة والمعدات</h2>
+          <p class="text-muted mb-0">الصافي = إيراد الأعمال − (تكلفة الشراء + سجل المصاريف والصيانة). مؤشر الأداء خسارة أو ربح ممتاز أو ربح متوسط.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 no-print">
+          {% include '_report_print_btn.html' %}
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('equipment_cycle') }}">دورة الصيانة</a>
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('equipment') }}">سجل المعدات</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">تكلفة الشراء</div><div class="h5 mb-0">{{ totals.purchase|groupnum }}</div></div></div>
+  <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">مصروف التشغيل والصيانة</div><div class="h5 mb-0">{{ totals.running|groupnum }}</div></div></div>
+  <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">إيراد الأعمال</div><div class="h5 mb-0">{{ totals.revenue|groupnum }}</div></div></div>
+  <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">صافي النتيجة</div><div class="h5 mb-0 {% if totals.result < 0 %}text-danger{% else %}text-success{% endif %}">{{ totals.result|groupnum }}</div></div></div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">ربحية كل معدة</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>الكود</th>
+              <th>رقم العربية</th>
+              <th>المعدة</th>
+              <th>الترخيص</th>
+              <th>تكلفة الشراء</th>
+              <th>المصاريف والصيانة</th>
+              <th>إيراد الأعمال</th>
+              <th>صافي الربح / الخسارة</th>
+              <th>مؤشر الأداء</th>
+              <th>الحالة</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td>{{ row.code }}</td>
+                <td>{{ row.plate_number }}</td>
+                <td>{{ row.equipment.name }}</td>
+                <td><span class="badge bg-{{ row.license.class }}">{{ row.license.label }}</span> {% if row.license.expiry %}<span class="small text-muted">{{ row.license.expiry }}</span>{% endif %}</td>
+                <td>{{ row.purchase_cost|groupnum }}</td>
+                <td>{{ row.running_cost|groupnum }}</td>
+                <td>{{ row.revenue|groupnum }}</td>
+                <td class="fw-bold {% if row.result < 0 %}text-danger{% else %}text-success{% endif %}">{{ row.net_label }} {{ row.result|groupnum }}</td>
+                <td><span class="badge bg-{{ row.performance.class }}">{{ row.performance.label }}</span></td>
+                <td>{{ row.status }}</td>
+                <td class="text-nowrap no-print">
+                  <a class="btn btn-sm btn-outline-info" href="{{ url_for('equipment_cycle', equipment_id=row.equipment.id) }}">الدورة</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('print_equipment_maintenance', equipment_id=row.equipment.id) }}">ورقة</a>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="11" class="text-center text-muted">لا توجد معدات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">سجل المستخلصات والأعمال لكل المعدات</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>الكود</th><th>المعدة</th><th>الدور</th><th>الموقع</th><th>العميل</th><th>رقم البون</th><th>المبلغ</th></tr></thead>
+          <tbody>
+            {% for work in works %}
+              <tr>
+                <td>{{ work.date or '-' }}</td>
+                <td>{{ work.equipment_code }}</td>
+                <td>{{ work.equipment_name }}</td>
+                <td>{{ work.role }}</td>
+                <td>{{ work.site }}</td>
+                <td>{{ work.client_name or '-' }}</td>
+                <td>{{ work.voucher }}</td>
+                <td class="fw-bold">{{ work.amount|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-center text-muted">لا توجد أعمال مبيعات مربوطة بالمعدات بعد</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">سجل المصاريف والصيانة لكل المعدات</h5>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle mb-0">
+          <thead><tr><th>التاريخ</th><th>الكود</th><th>المعدة</th><th>البند</th><th>البيان</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th>المصدر</th></tr></thead>
+          <tbody>
+            {% for item in expenses %}
+              <tr>
+                <td>{{ item.date or '-' }}</td>
+                <td>{{ item.equipment_code }}</td>
+                <td>{{ item.equipment_name }}</td>
+                <td>{{ item.kind }}</td>
+                <td>{{ item.description }}</td>
+                <td>{{ item.quantity|qtynum }}</td>
+                <td>{{ item.unit_price|paynum }}</td>
+                <td class="fw-bold">{{ item.amount|groupnum }}</td>
+                <td>{{ item.source }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا توجد مصاريف أو صيانة مسجّلة بعد</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
