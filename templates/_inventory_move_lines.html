@@ -1,0 +1,107 @@
+{% set is_out = move_kind == 'out' %}
+<p class="text-muted small">
+  {% if is_out %}
+    المنصرف يخصم الكمية من المخزن ويحمّل الحساب الوجهة بقيمة الصنف. أضف بند لكل حركة واحفظ الدفعة كلها مرة واحدة.
+  {% else %}
+    الوارد يزيد كمية وتكلفة حساب المخزن. استلام أوامر الشراء بيظهر هنا تلقائيًا. أضف بند لكل حركة واحفظ الدفعة كلها مرة واحدة.
+  {% endif %}
+</p>
+<style>
+  .inv-line-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fbfdff; overflow: visible; }
+  .inv-line-row .form-label { font-size: .8rem; margin-bottom: .2rem; }
+</style>
+<form method="post" class="mb-4 js-inv-move-form" id="inv{{ 'Out' if is_out else 'In' }}Form">
+  <input type="hidden" name="action" value="movement">
+  <input type="hidden" name="tab" value="{{ 'out' if is_out else 'in' }}">
+  <input type="hidden" name="transaction_type" value="{{ 'منصرف' if is_out else 'وارد' }}">
+  <div id="invLinesBody" class="d-flex flex-column gap-3">
+    <div class="inv-line-row">
+      <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label">التاريخ</label>
+          <input type="date" class="form-control form-control-sm" name="line_date" value="{{ today_date }}">
+        </div>
+        <div class="col-12 col-md-4 col-xl-3">
+          <label class="form-label">المشروع</label>
+          <select class="form-select form-select-sm js-searchable-select" name="line_project_id" data-placeholder="اختر المشروع">
+            <option value="">اختر المشروع</option>
+            {% for item in projects %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-5 col-xl-3">
+          <label class="form-label">المخزن / الحساب المصدر</label>
+          {% with name='line_warehouse_name', groups=warehouse_groups, selected=default_warehouse, placeholder='اختر المخزن أو الخزنة أو الحساب', extra_class='form-select-sm' %}
+            {% include '_warehouse_select.html' %}
+          {% endwith %}
+        </div>
+        {% if is_out %}
+        <div class="col-12 col-md-6 col-xl-4">
+          <label class="form-label">الحساب الوجهة</label>
+          {% with name='line_destination_warehouse', groups=warehouse_groups, selected='', placeholder='اختر الحساب الذي سيُحمَّل بالصنف', extra_class='form-select-sm js-inv-dest' %}
+            {% include '_warehouse_select.html' %}
+          {% endwith %}
+        </div>
+        {% endif %}
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label">الصنف</label>
+          <select class="form-select form-select-sm js-searchable-select js-inv-item" name="line_stock_item_id" data-placeholder="اختر الصنف المكوّد">
+            <option value="">اختر الصنف</option>
+            {% for item in stock_items %}<option value="{{ item.id }}" data-unit="{{ item.unit or '' }}">{{ item.display_code }} — {{ item.name }}</option>{% endfor %}
+          </select>
+          <div class="form-text">للصنف فقط. لو مش متكوّد، كوّده من تبويب الأصناف.</div>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label">الوحدة</label>
+          <select class="form-select form-select-sm js-searchable-select js-inv-unit" name="line_unit">
+            <option value="">—</option>
+            {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-1">
+          <label class="form-label">الكمية</label>
+          <input type="number" step="any" min="0" class="form-control form-control-sm js-inv-qty" name="line_quantity" value="">
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label">تكلفة الوحدة</label>
+          <input type="number" step="0.01" min="0" class="form-control form-control-sm js-inv-cost" name="line_unit_cost" {% if is_out %}placeholder="تلقائي من متوسط المخزن"{% else %}value=""{% endif %}>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label">إجمالي القيمة</label>
+          <input type="number" step="0.01" min="0" class="form-control form-control-sm js-inv-total" name="line_line_amount" value="0">
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label">المستلم</label>
+          <input class="form-control form-control-sm" name="line_recipient_name" placeholder="اسم المستلم">
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label">أمين المخزن</label>
+          <input class="form-control form-control-sm" name="line_storekeeper_name" placeholder="اسم أمين المخزن">
+        </div>
+        {% if is_out %}
+        <div class="col-12 col-md-4 col-xl-3">
+          <label class="form-label">المعدة (اختياري)</label>
+          <select class="form-select form-select-sm js-searchable-select" name="line_equipment_id" data-placeholder="بدون معدة">
+            <option value="">-- بدون معدة --</option>
+            {% for eq in equipment_items|default([]) %}<option value="{{ eq.id }}">{{ eq.display_code }} — {{ eq.name }}</option>{% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="col-12 col-md-6 col-xl-3">
+          <label class="form-label">ملاحظات</label>
+          <input class="form-control form-control-sm" name="line_notes" placeholder="ملاحظات">
+        </div>
+        <div class="col-6 col-md-2 col-xl-1">
+          <label class="form-label d-none d-md-block">&nbsp;</label>
+          <button type="button" class="btn btn-sm btn-outline-danger w-100 remove-inv-line">حذف</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="d-flex flex-wrap gap-2 mt-3">
+    <button type="button" class="btn btn-outline-light add-inv-line"><i class="bi bi-plus-lg"></i> إضافة بند</button>
+    <button class="btn btn-cyan">{% if is_out %}حفظ كل المنصرف{% else %}حفظ كل الوارد{% endif %}</button>
+  </div>
+</form>
+{% with move_items=(out_items if is_out else in_items), move_kind=move_kind %}
+  {% include '_inventory_move_table.html' %}
+{% endwith %}
