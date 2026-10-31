@@ -1,0 +1,6000 @@
+from collections import defaultdict, deque
+from datetime import date, datetime
+from decimal import Decimal
+import json
+from flask import g, has_request_context, request
+from sqlalchemy import inspect as sa_inspect, text
+from models import (
+    db, MoneyDec, Project, ChartOfAccount, ProgressPayment, ProgressPaymentItem, CostEntry,
+    Subcontractor, Supplier, PurchaseOrder, PurchaseOrderItem, InventoryTransaction, LaborEntry,
+    Equipment, EquipmentMaintenance, JournalEntry, CustodySettlement, DriverCompensationEntry, SalesTrip,
+    StockItem,
+    SubcontractorPayment, SubcontractorRetentionRelease, Estimation, EstimationItem, ClientReceipt,
+    SupplierPayment, AccountingPeriod, DocumentAttachment, ActivityLog, Employee,
+    PayrollSlip, EmployeeSalaryPayment, EmployeeAttendance, BOQItem,
+)
+from services.immutability import JOURNAL_SOURCED_LOCK_MESSAGE
+
+SQLITE_MIGRATIONS = {
+    "user": {
+        "permissions_json": 'ALTER TABLE "user" ADD COLUMN permissions_json TEXT',
+        "amount_pin_hash": 'ALTER TABLE "user" ADD COLUMN amount_pin_hash VARCHAR(256)',
+        "recovery_pin_hash": 'ALTER TABLE "user" ADD COLUMN recovery_pin_hash VARCHAR(256)',
+        "phone": 'ALTER TABLE "user" ADD COLUMN phone VARCHAR(20)',
+        "reset_code_hash": 'ALTER TABLE "user" ADD COLUMN reset_code_hash VARCHAR(256)',
+        "reset_code_expires": 'ALTER TABLE "user" ADD COLUMN reset_code_expires VARCHAR(32)',
+        "reset_code_sent_at": 'ALTER TABLE "user" ADD COLUMN reset_code_sent_at VARCHAR(32)',
+        "reset_attempts": 'ALTER TABLE "user" ADD COLUMN reset_attempts INTEGER NOT NULL DEFAULT 0',
+        "is_hidden": 'ALTER TABLE "user" ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0',
+        "email": 'ALTER TABLE "user" ADD COLUMN email VARCHAR(255)',
+        "email_verified": 'ALTER TABLE "user" ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 0',
+        "pending_email": 'ALTER TABLE "user" ADD COLUMN pending_email VARCHAR(255)',
+        "email_verify_hash": 'ALTER TABLE "user" ADD COLUMN email_verify_hash VARCHAR(256)',
+        "email_verify_expires": 'ALTER TABLE "user" ADD COLUMN email_verify_expires VARCHAR(32)',
+        "email_verify_sent_at": 'ALTER TABLE "user" ADD COLUMN email_verify_sent_at VARCHAR(32)',
+        "email_verify_attempts": 'ALTER TABLE "user" ADD COLUMN email_verify_attempts INTEGER NOT NULL DEFAULT 0',
+    },
+    "project": {
+        "project_name": "ALTER TABLE project ADD COLUMN project_name VARCHAR(128) NOT NULL DEFAULT ''",
+        "admin_percentage": "ALTER TABLE project ADD COLUMN admin_percentage FLOAT NOT NULL DEFAULT 0",
+    },
+    "purchase_order": {
+        "item_name": "ALTER TABLE purchase_order ADD COLUMN item_name VARCHAR(128)",
+        "quantity": "ALTER TABLE purchase_order ADD COLUMN quantity FLOAT NOT NULL DEFAULT 0",
+        "unit_price": "ALTER TABLE purchase_order ADD COLUMN unit_price FLOAT NOT NULL DEFAULT 0",
+        "discount": "ALTER TABLE purchase_order ADD COLUMN discount FLOAT NOT NULL DEFAULT 0",
+        "warehouse_name": "ALTER TABLE purchase_order ADD COLUMN warehouse_name VARCHAR(128)",
+        "warehouse_account_id": "ALTER TABLE purchase_order ADD COLUMN warehouse_account_id INTEGER",
+        "equipment_id": "ALTER TABLE purchase_order ADD COLUMN equipment_id INTEGER",
+    },
+    "inventory_transaction": {
+        "supplier_id": "ALTER TABLE inventory_transaction ADD COLUMN supplier_id INTEGER",
+        "unit": "ALTER TABLE inventory_transaction ADD COLUMN unit VARCHAR(32)",
+        "warehouse_account_id": "ALTER TABLE inventory_transaction ADD COLUMN warehouse_account_id INTEGER",
+        "destination_account_id": "ALTER TABLE inventory_transaction ADD COLUMN destination_account_id INTEGER",
+        "recipient_name": "ALTER TABLE inventory_transaction ADD COLUMN recipient_name VARCHAR(128)",
+        "storekeeper_name": "ALTER TABLE inventory_transaction ADD COLUMN storekeeper_name VARCHAR(128)",
+        "equipment_id": "ALTER TABLE inventory_transaction ADD COLUMN equipment_id INTEGER",
+        "stock_item_id": "ALTER TABLE inventory_transaction ADD COLUMN stock_item_id INTEGER",
+    },
+    "chart_of_account": {
+        "opening_balance": "ALTER TABLE chart_of_account ADD COLUMN opening_balance FLOAT NOT NULL DEFAULT 0",
+        "term_days": "ALTER TABLE chart_of_account ADD COLUMN term_days INTEGER NOT NULL DEFAULT 0",
+        "expense_class": "ALTER TABLE chart_of_account ADD COLUMN expense_class VARCHAR(32)",
+        "project_id": "ALTER TABLE chart_of_account ADD COLUMN project_id INTEGER",
+        "boq_item_id": "ALTER TABLE chart_of_account ADD COLUMN boq_item_id INTEGER",
+        "stage": "ALTER TABLE chart_of_account ADD COLUMN stage VARCHAR(128)",
+    },
+    "journal_entry": {
+        "entry_number": "ALTER TABLE journal_entry ADD COLUMN entry_number VARCHAR(64)",
+        "reference": "ALTER TABLE journal_entry ADD COLUMN reference VARCHAR(128)",
+        "journal_name": "ALTER TABLE journal_entry ADD COLUMN journal_name VARCHAR(64) NOT NULL DEFAULT 'يومية عامة'",
+        "branch": "ALTER TABLE journal_entry ADD COLUMN branch VARCHAR(128)",
+        "stock_move": "ALTER TABLE journal_entry ADD COLUMN stock_move VARCHAR(128)",
+        "status": "ALTER TABLE journal_entry ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'مسودة'",
+        "cost_center": "ALTER TABLE journal_entry ADD COLUMN cost_center VARCHAR(128)",
+        "project_id": "ALTER TABLE journal_entry ADD COLUMN project_id INTEGER",
+        "equipment_id": "ALTER TABLE journal_entry ADD COLUMN equipment_id INTEGER",
+        "reversal_of_id": "ALTER TABLE journal_entry ADD COLUMN reversal_of_id INTEGER",
+    },
+    "custody_settlement": {
+        "expense_item": "ALTER TABLE custody_settlement ADD COLUMN expense_item VARCHAR(128)",
+        "expense_nature": "ALTER TABLE custody_settlement ADD COLUMN expense_nature VARCHAR(32)",
+        "operation_type": "ALTER TABLE custody_settlement ADD COLUMN operation_type VARCHAR(32) NOT NULL DEFAULT 'صرف عهدة'",
+        "settlement_lines": "ALTER TABLE custody_settlement ADD COLUMN settlement_lines TEXT",
+    },
+    "subcontractor": {
+        "code": "ALTER TABLE subcontractor ADD COLUMN code VARCHAR(64)",
+        "entity_kind": "ALTER TABLE subcontractor ADD COLUMN entity_kind VARCHAR(64) NOT NULL DEFAULT 'مقاول تنفيذي (مصنعية ومعدات/عمالة)'",
+        "contact_info": "ALTER TABLE subcontractor ADD COLUMN contact_info VARCHAR(256)",
+        "retention_percentage": "ALTER TABLE subcontractor ADD COLUMN retention_percentage FLOAT NOT NULL DEFAULT 0",
+        "tax_percentage": "ALTER TABLE subcontractor ADD COLUMN tax_percentage FLOAT NOT NULL DEFAULT 0",
+    },
+    "supplier": {
+        "code": "ALTER TABLE supplier ADD COLUMN code VARCHAR(64)",
+        "entity_kind": "ALTER TABLE supplier ADD COLUMN entity_kind VARCHAR(64) NOT NULL DEFAULT 'مورد توريد مواد بناء'",
+    },
+    "progress_payment": {
+        "payment_number": "ALTER TABLE progress_payment ADD COLUMN payment_number VARCHAR(64)",
+        "date": "ALTER TABLE progress_payment ADD COLUMN date VARCHAR(20)",
+        "retention_percentage": "ALTER TABLE progress_payment ADD COLUMN retention_percentage FLOAT NOT NULL DEFAULT 0",
+        "tax_percentage": "ALTER TABLE progress_payment ADD COLUMN tax_percentage FLOAT NOT NULL DEFAULT 0",
+        "other_deductions": "ALTER TABLE progress_payment ADD COLUMN other_deductions FLOAT NOT NULL DEFAULT 0",
+        "advance_deduction": "ALTER TABLE progress_payment ADD COLUMN advance_deduction FLOAT NOT NULL DEFAULT 0",
+        "discount_percentage": "ALTER TABLE progress_payment ADD COLUMN discount_percentage FLOAT NOT NULL DEFAULT 0",
+        "discount_value": "ALTER TABLE progress_payment ADD COLUMN discount_value FLOAT NOT NULL DEFAULT 0",
+    },
+    "subcontractor_payment": {
+        "payment_kind": "ALTER TABLE subcontractor_payment ADD COLUMN payment_kind VARCHAR(32) NOT NULL DEFAULT 'تحت الحساب'",
+    },
+    "employee": {
+        "code": "ALTER TABLE employee ADD COLUMN code VARCHAR(64)",
+        "hometown": "ALTER TABLE employee ADD COLUMN hometown VARCHAR(128)",
+        "job_title": "ALTER TABLE employee ADD COLUMN job_title VARCHAR(128)",
+        "site": "ALTER TABLE employee ADD COLUMN site VARCHAR(128)",
+        "tag": "ALTER TABLE employee ADD COLUMN tag VARCHAR(64) NOT NULL DEFAULT 'موظف'",
+        "basic_salary": "ALTER TABLE employee ADD COLUMN basic_salary NUMERIC(18, 4) NOT NULL DEFAULT 0",
+        "is_active": "ALTER TABLE employee ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+        "contact_info": "ALTER TABLE employee ADD COLUMN contact_info VARCHAR(256)",
+        "notes": "ALTER TABLE employee ADD COLUMN notes TEXT",
+    },
+    "payroll_slip": {
+        "daily_rate": "ALTER TABLE payroll_slip ADD COLUMN daily_rate FLOAT NOT NULL DEFAULT 0",
+        "earned_salary": "ALTER TABLE payroll_slip ADD COLUMN earned_salary FLOAT NOT NULL DEFAULT 0",
+        "transport": "ALTER TABLE payroll_slip ADD COLUMN transport FLOAT NOT NULL DEFAULT 0",
+        "daily_deduction_days": "ALTER TABLE payroll_slip ADD COLUMN daily_deduction_days FLOAT NOT NULL DEFAULT 0",
+    },
+    "employee_attendance": {
+        "record_status": "ALTER TABLE employee_attendance ADD COLUMN record_status VARCHAR(20) NOT NULL DEFAULT 'مرحل'",
+        "delay_minutes": "ALTER TABLE employee_attendance ADD COLUMN delay_minutes NUMERIC(18, 4) NOT NULL DEFAULT 0",
+        "permission_hours": "ALTER TABLE employee_attendance ADD COLUMN permission_hours NUMERIC(18, 4) NOT NULL DEFAULT 0",
+    },
+    "sales_trip": {
+        "trailer_number": "ALTER TABLE sales_trip ADD COLUMN trailer_number VARCHAR(64)",
+        "dump_cubage": "ALTER TABLE sales_trip ADD COLUMN dump_cubage FLOAT NOT NULL DEFAULT 0",
+        "trailer_cubage": "ALTER TABLE sales_trip ADD COLUMN trailer_cubage FLOAT NOT NULL DEFAULT 0",
+    },
+    "equipment": {
+        "code": "ALTER TABLE equipment ADD COLUMN code VARCHAR(64)",
+        "plate_number": "ALTER TABLE equipment ADD COLUMN plate_number VARCHAR(64)",
+        "license_expiry": "ALTER TABLE equipment ADD COLUMN license_expiry VARCHAR(20)",
+        "chassis_number": "ALTER TABLE equipment ADD COLUMN chassis_number VARCHAR(64)",
+        "vehicle_type": "ALTER TABLE equipment ADD COLUMN vehicle_type VARCHAR(64)",
+        "status": "ALTER TABLE equipment ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'تعمل بالموقع'",
+        "current_meter": "ALTER TABLE equipment ADD COLUMN current_meter FLOAT NOT NULL DEFAULT 0",
+        "meter_unit": "ALTER TABLE equipment ADD COLUMN meter_unit VARCHAR(16) NOT NULL DEFAULT 'كم'",
+        "last_oil_meter": "ALTER TABLE equipment ADD COLUMN last_oil_meter FLOAT NOT NULL DEFAULT 0",
+        "oil_interval": "ALTER TABLE equipment ADD COLUMN oil_interval FLOAT NOT NULL DEFAULT 10000",
+        "oil_tolerance": "ALTER TABLE equipment ADD COLUMN oil_tolerance FLOAT NOT NULL DEFAULT 1000",
+    },
+    "equipment_maintenance": {
+        "quantity": "ALTER TABLE equipment_maintenance ADD COLUMN quantity FLOAT NOT NULL DEFAULT 1",
+        "unit_price": "ALTER TABLE equipment_maintenance ADD COLUMN unit_price FLOAT NOT NULL DEFAULT 0",
+        "source_type": "ALTER TABLE equipment_maintenance ADD COLUMN source_type VARCHAR(32)",
+        "source_id": "ALTER TABLE equipment_maintenance ADD COLUMN source_id INTEGER",
+    },
+    "driver_compensation_entry": {
+        "driver_code": "ALTER TABLE driver_compensation_entry ADD COLUMN driver_code VARCHAR(32)",
+        "national_id": "ALTER TABLE driver_compensation_entry ADD COLUMN national_id VARCHAR(32)",
+        "phone": "ALTER TABLE driver_compensation_entry ADD COLUMN phone VARCHAR(32)",
+        "vehicle_type": "ALTER TABLE driver_compensation_entry ADD COLUMN vehicle_type VARCHAR(64)",
+        "tractor_number": "ALTER TABLE driver_compensation_entry ADD COLUMN tractor_number VARCHAR(64)",
+        "period_from": "ALTER TABLE driver_compensation_entry ADD COLUMN period_from VARCHAR(20)",
+        "period_to": "ALTER TABLE driver_compensation_entry ADD COLUMN period_to VARCHAR(20)",
+        "accountant_name": "ALTER TABLE driver_compensation_entry ADD COLUMN accountant_name VARCHAR(128)",
+        "accounts_officer": "ALTER TABLE driver_compensation_entry ADD COLUMN accounts_officer VARCHAR(128)",
+        "details_json": "ALTER TABLE driver_compensation_entry ADD COLUMN details_json TEXT",
+        "driver_account_total": "ALTER TABLE driver_compensation_entry ADD COLUMN driver_account_total FLOAT NOT NULL DEFAULT 0",
+        "transport_total": "ALTER TABLE driver_compensation_entry ADD COLUMN transport_total FLOAT NOT NULL DEFAULT 0",
+        "sundries_total": "ALTER TABLE driver_compensation_entry ADD COLUMN sundries_total FLOAT NOT NULL DEFAULT 0",
+        "entitlements_total": "ALTER TABLE driver_compensation_entry ADD COLUMN entitlements_total FLOAT NOT NULL DEFAULT 0",
+        "deductions_total": "ALTER TABLE driver_compensation_entry ADD COLUMN deductions_total FLOAT NOT NULL DEFAULT 0",
+        "net_amount": "ALTER TABLE driver_compensation_entry ADD COLUMN net_amount FLOAT NOT NULL DEFAULT 0",
+    },
+}
+
+
+def _audit_column_alters(table_name):
+    return {
+        "created_at": f"ALTER TABLE {table_name} ADD COLUMN created_at VARCHAR(32)",
+        "created_by_id": f"ALTER TABLE {table_name} ADD COLUMN created_by_id INTEGER",
+        "created_by_name": f"ALTER TABLE {table_name} ADD COLUMN created_by_name VARCHAR(128)",
+        "updated_at": f"ALTER TABLE {table_name} ADD COLUMN updated_at VARCHAR(32)",
+        "updated_by_id": f"ALTER TABLE {table_name} ADD COLUMN updated_by_id INTEGER",
+        "updated_by_name": f"ALTER TABLE {table_name} ADD COLUMN updated_by_name VARCHAR(128)",
+    }
+
+
+for _audit_table in (
+    "project",
+    "chart_of_account",
+    "progress_payment",
+    "subcontractor_payment",
+    "cost_entry",
+    "subcontractor",
+    "supplier",
+    "purchase_order",
+    "inventory_transaction",
+    "stock_item",
+    "labor_entry",
+    "equipment",
+    "equipment_maintenance",
+    "custody_settlement",
+    "driver_compensation_entry",
+    "sales_trip",
+    "estimation",
+    "journal_entry",
+    "client_receipt",
+    "supplier_payment",
+    "employee",
+    "payroll_slip",
+    "employee_attendance",
+    "employee_salary_payment",
+):
+    SQLITE_MIGRATIONS.setdefault(_audit_table, {}).update(_audit_column_alters(_audit_table))
+
+
+
+def _adapt_migration_sql(sql, dialect):
+    """SQLite يقبل DEFAULT 0 للـ boolean، PostgreSQL يحتاج FALSE/TRUE."""
+    if dialect != "postgresql":
+        return sql
+    sql = sql.replace(" FLOAT ", " DOUBLE PRECISION ")
+    sql = sql.replace(" BOOLEAN NOT NULL DEFAULT 0", " BOOLEAN NOT NULL DEFAULT FALSE")
+    sql = sql.replace(" BOOLEAN NOT NULL DEFAULT 1", " BOOLEAN NOT NULL DEFAULT TRUE")
+    sql = sql.replace(" BOOLEAN DEFAULT 0", " BOOLEAN DEFAULT FALSE")
+    sql = sql.replace(" BOOLEAN DEFAULT 1", " BOOLEAN DEFAULT TRUE")
+    return sql
+
+
+def run_schema_migrations():
+    """إضافة الأعمدة الناقصة على SQLite وPostgreSQL دون لمس البيانات الموجودة."""
+    inspector = sa_inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    dialect = db.engine.dialect.name
+    with db.engine.begin() as connection:
+        for table_name, columns in SQLITE_MIGRATIONS.items():
+            if table_name not in existing_tables:
+                continue
+            table_columns = {column["name"] for column in inspector.get_columns(table_name)}
+            for column_name, alter_sql in columns.items():
+                if column_name in table_columns:
+                    continue
+                connection.execute(text(_adapt_migration_sql(alter_sql, dialect)))
+                table_columns.add(column_name)
+    _ensure_user_email_unique_index()
+    ensure_purchase_order_items()
+    backfill_open_purchase_orders_already_received()
+
+
+def _ensure_user_email_unique_index():
+    inspector = sa_inspect(db.engine)
+    if "user" not in set(inspector.get_table_names()):
+        return
+    columns = {column["name"] for column in inspector.get_columns("user")}
+    if "email" not in columns:
+        return
+    for index in inspector.get_indexes("user"):
+        if index.get("unique") and list(index.get("column_names") or []) == ["email"]:
+            return
+    try:
+        for constraint in inspector.get_unique_constraints("user"):
+            if list(constraint.get("column_names") or []) == ["email"]:
+                return
+    except NotImplementedError:
+        pass
+    with db.engine.begin() as connection:
+        duplicates = connection.execute(text(
+            'SELECT email, COUNT(*) AS n FROM "user" '
+            "WHERE email IS NOT NULL AND TRIM(email) != '' "
+            "GROUP BY email HAVING COUNT(*) > 1"
+        )).fetchall()
+        if duplicates:
+            print(
+                "WARNING: duplicate user.email values exist; unique index was not created. "
+                "Resolve duplicates manually before enforcing uniqueness."
+            )
+            return
+        connection.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ux_user_email ON "user" (email)'))
+
+
+def run_sqlite_migrations():
+    run_schema_migrations()
+
+
+# تصنيفات قديمة تم توحيد مسمياتها مع نص SRS 2.1
+LEGACY_ENTITY_KIND_RENAMES = {
+    "مقاول تنفيذي": "مقاول تنفيذي (مصنعية ومعدات/عمالة)",
+    "مقاول باطن أعمال": "مقاول تنفيذي (مصنعية ومعدات/عمالة)",
+    "مورد خدمات": "مورد تقديم وتمرير خدمات",
+    "مورد مواد": "مورد توريد مواد بناء",
+}
+
+
+def normalize_entity_kinds():
+    changed = False
+    for model in (Subcontractor, Supplier):
+        for old_value, new_value in LEGACY_ENTITY_KIND_RENAMES.items():
+            for item in model.query.filter(model.entity_kind == old_value).all():
+                item.entity_kind = new_value
+                changed = True
+    if changed:
+        db.session.commit()
+
+
+JOURNAL_OPTIONS = [
+    "نقطة بيع",
+    "تقييم المخزون",
+    "أرباح وخسائر العملات",
+    "أصول ثابتة",
+    "متنوع",
+    "أرصدة افتتاحية",
+    "المخزون",
+    "المستخلصات",
+    "المقايسات",
+    "المصاريف",
+    "يومية عامة",
+]
+
+# تصنيف جهات التعامل (SRS 2.1)
+ENTITY_KIND_OPTIONS = [
+    "مقاول تنفيذي (مصنعية ومعدات/عمالة)",
+    "مورد توريد مواد بناء",
+    "مورد تقديم وتمرير خدمات",
+]
+
+# وحدات قياس الكميات للمستخلصات والمقايسات (SRS 2.2 / 4.1)
+UNIT_OPTIONS = [
+    "متر مسطح",
+    "متر مكعب",
+    "متر طولي",
+    "بالعدد",
+    "طن",
+    "كيلو جرام",
+    "لتر",
+    "يومية",
+    "نقلة",
+    "مقطوعية",
+]
+
+# تبويب المصروفات (SRS 3.1)
+EXPENSE_CLASS_DIRECT = "مباشرة"
+EXPENSE_CLASS_INDIRECT = "غير مباشرة"
+EXPENSE_CLASS_ADMIN = "إدارية"
+EXPENSE_CLASS_OPTIONS = [EXPENSE_CLASS_DIRECT, EXPENSE_CLASS_INDIRECT, EXPENSE_CLASS_ADMIN]
+
+PAYMENT_METHOD_CASH = "نقدي"
+PAYMENT_METHOD_BANK = "بنكي"
+PAYMENT_METHOD_INSTAPAY = "InstaPay"
+PAYMENT_METHOD_WALLET = "محفظة إلكترونية"
+PAYMENT_METHOD_OPTIONS = (
+    PAYMENT_METHOD_CASH,
+    PAYMENT_METHOD_BANK,
+    PAYMENT_METHOD_INSTAPAY,
+    PAYMENT_METHOD_WALLET,
+)
+DIGITAL_PAYMENT_METHODS = {PAYMENT_METHOD_BANK, PAYMENT_METHOD_INSTAPAY, PAYMENT_METHOD_WALLET}
+
+
+def normalize_payment_method(value, default=PAYMENT_METHOD_CASH):
+    value = (value or "").strip()
+    return value if value in PAYMENT_METHOD_OPTIONS else default
+
+
+def treasury_code_for_payment_method(method):
+    return "TRS-BANK" if normalize_payment_method(method) in DIGITAL_PAYMENT_METHODS else "TRS-MAIN"
+
+# طبيعة مصروف العهدة (SRS 3.2)
+CUSTODY_EXPENSE_NATURES = ["مصروف نقلة", "مصروف يومي", "مصروف إداري"]
+
+CUSTODY_OPERATION_TYPES = ["صرف عهدة", "تسوية عهدة", "رد باقي عهدة", "إعادة تغذية عهدة"]
+CUSTODY_DISBURSE_OPERATIONS = ("صرف عهدة", "إعادة تغذية عهدة")
+
+CUSTODY_OWNER_TYPES = ["سائق", "مندوب", "معدة"]
+MAINTENANCE_KINDS = ["سولار", "صيانة", "إصلاح", "زيوت", "فلاتر", "بطاريات", "إطارات", "رسوم وترخيص", "قطع غيار", "أخرى"]
+EQUIPMENT_EXPENSE_KINDS = MAINTENANCE_KINDS
+EQUIPMENT_STATUSES = ["تعمل بالموقع", "عطلان", "متوقفة"]
+METER_UNITS = ["كم", "ساعة"]
+LICENSE_WARN_DAYS = 30
+
+
+def as_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def as_float(value):
+    """Parse a form/DB number as Decimal so money does not pick up binary float error."""
+    return MoneyDec.from_raw(value)
+
+
+def persist_synced(*callbacks):
+    """Flush the document, sync auto-journals, then commit once so a closed period can roll back both."""
+    db.session.flush()
+    for callback in callbacks:
+        if callback:
+            callback()
+    db.session.commit()
+
+
+READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def is_page_view():
+    """فتح صفحة قراءة بس: المزامنة الشاملة بتشتغل بعد الحفظ وعند تشغيل البرنامج، مش وقت العرض."""
+    return has_request_context() and request.method in READ_ONLY_METHODS
+
+
+def ensure_chart_account(code, name, category, expense_class=None):
+    existing_by_code = ChartOfAccount.query.filter_by(code=code).first()
+    if existing_by_code:
+        if expense_class and not existing_by_code.expense_class:
+            existing_by_code.expense_class = expense_class
+            return True
+        return False
+    existing_by_name = ChartOfAccount.query.filter_by(name=name, category=category).first()
+    if existing_by_name:
+        if expense_class and not existing_by_name.expense_class:
+            existing_by_name.expense_class = expense_class
+            return True
+        return False
+    db.session.add(ChartOfAccount(code=code, name=name, category=category, expense_class=expense_class))
+    return True
+
+
+# بنود مصروفات العهد مع تبويبها المحاسبي (SRS 3.1 / 3.2)
+CUSTODY_EXPENSE_ACCOUNTS = [
+    ("EXP-ELC", "كهرباء", EXPENSE_CLASS_INDIRECT),
+    ("EXP-WTR", "مياه", EXPENSE_CLASS_INDIRECT),
+    ("EXP-SOL", "سولار", EXPENSE_CLASS_DIRECT),
+    ("EXP-CRT", "كارتة", EXPENSE_CLASS_DIRECT),
+    ("EXP-ROD", "صيانة طريق", EXPENSE_CLASS_DIRECT),
+    ("EXP-OFF", "ادوات مكتبية", EXPENSE_CLASS_ADMIN),
+    ("EXP-HOM", "ادوات منزلية", EXPENSE_CLASS_ADMIN),
+    ("EXP-SPR", "قطع غيار", EXPENSE_CLASS_DIRECT),
+    ("EXP-FUR", "اثاث", EXPENSE_CLASS_ADMIN),
+    ("EXP-TIP", "اكراميات", EXPENSE_CLASS_INDIRECT),
+    ("EXP-FOD", "اكل وشرب", EXPENSE_CLASS_INDIRECT),
+    ("EXP-REN", "ايجارات", EXPENSE_CLASS_INDIRECT),
+    ("EXP-OTH", "مصروفات اخرى", EXPENSE_CLASS_INDIRECT),
+]
+
+# حسابات التشغيل الأساسية المطلوبة لصحة القيود المحاسبية
+CORE_ACCOUNTING_ACCOUNTS = [
+    # أصول
+    ("INV-MAT", "مخزون مواد ومهمات", "الأصول", None),
+    # التزامات واستقطاعات
+    ("LIB-SUB", "مقاولو الباطن - أرصدة دائنة", "مقاولي الباطن", None),
+    ("LIB-PAY", "موردون متنوعون - أرصدة دائنة", "الموردين", None),
+    ("LIB-RET", "تأمينات وضمانات محتجزة", "الالتزامات", None),
+    ("LIB-TAX", "ضرائب مستحقة (خصم وإضافة)", "الالتزامات", None),
+    ("LIB-ACR", "مصروفات مستحقة", "الالتزامات", None),
+    ("LIB-WAG", "أجور مستحقة", "الالتزامات", None),
+    # إيرادات
+    ("REV-WRK", "إيرادات أعمال ومقايسات", "الإيرادات", None),
+    ("REV-TRP", "إيرادات النقل والمبيعات", "الإيرادات", None),
+    ("REV-PEN", "غرامات وخصومات محملة على الغير", "الإيرادات", None),
+    ("REV-OTH", "خصومات واستقطاعات أخرى", "الإيرادات", None),
+    # مصروفات مبوبة
+    ("EXP-SUB", "مصروف أعمال مقاولي الباطن", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-MAT", "خامات ومواد بناء", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-LAB", "عمالة موقع", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-TRN", "نقل مباشر", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-EQP", "تشغيل وصيانة معدات", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-DRV", "مصروفات السواقين", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-SAL", "مصروف المرتبات", "المصروفات", EXPENSE_CLASS_ADMIN),
+    ("EXP-SRV", "خدمات ومقاولات تمرير", "المصروفات", EXPENSE_CLASS_DIRECT),
+    ("EXP-IND", "مصروفات موقع غير مباشرة", "المصروفات", EXPENSE_CLASS_INDIRECT),
+    ("EXP-SUP", "إشراف هندسي وإداري بالموقع", "المصروفات", EXPENSE_CLASS_INDIRECT),
+    ("EXP-ADM", "مصروفات إدارية (الكتيبة/الإدارة)", "المصروفات", EXPENSE_CLASS_ADMIN),
+    ("EXP-PEN", "غرامات وجزاءات محملة على الشركة", "المصروفات", EXPENSE_CLASS_INDIRECT),
+    # استقطاعات العميل على مستخلصاتنا (أصول محتجزة لدى الغير)
+    ("RET-CLI", "تأمينات محتجزة لدى العملاء", "الأصول", None),
+    ("TAX-WHT", "ضرائب مخصومة تحت الحساب", "الأصول", None),
+]
+
+def ensure_custody_expense_accounts():
+    changed = False
+    for code, name, expense_class in CUSTODY_EXPENSE_ACCOUNTS:
+        changed = ensure_chart_account(code, name, "المصروفات", expense_class) or changed
+    return changed
+
+
+def ensure_core_accounting_accounts():
+    changed = False
+    for code, name, category, expense_class in CORE_ACCOUNTING_ACCOUNTS:
+        changed = ensure_chart_account(code, name, category, expense_class) or changed
+    return changed
+
+
+def get_account_by_code(code):
+    return ChartOfAccount.query.filter_by(code=code).first()
+
+
+def get_next_prefixed_code(prefix, used_codes):
+    index = 1
+    while True:
+        candidate = f"{prefix}-{index:04d}"
+        if candidate not in used_codes:
+            used_codes.add(candidate)
+            return candidate
+        index += 1
+
+
+# أنواع إضافية لمربع «نوع الحساب» فقط. لا تُستخدم في الترحيل التلقائي.
+EXTRA_ACCOUNT_CATEGORY_GROUPS = {
+    "assets": (
+        "الأراضي والمباني",
+        "الأثاث والمعدات المكتبية",
+        "الأصول غير الملموسة",
+        "مجمع إهلاك الأصول الثابتة",
+        "أوراق القبض",
+        "المصروفات المدفوعة مقدمًا",
+    ),
+    "liabilities": (
+        "أوراق الدفع",
+        "القروض قصيرة الأجل",
+        "القروض طويلة الأجل",
+        "مخصص مكافأة نهاية الخدمة",
+        "التزامات الضرائب",
+    ),
+    "equity": (
+        "الاحتياطيات",
+        "الأرباح المبقاة",
+        "جاري الشركاء",
+        "أرباح وخسائر العام",
+    ),
+    "revenue": (
+        "مردودات المبيعات",
+        "الخصم المسموح به",
+        "الإيرادات الأخرى",
+    ),
+    "expense": (
+        "تكلفة المبيعات",
+        "المصروفات البيعية والتسويقية",
+        "المصروفات التمويلية",
+        "الاستهلاكات والإهلاكات",
+        "الخصم المكتسب",
+    ),
+}
+
+
+def extra_account_categories():
+    categories = []
+    for group in EXTRA_ACCOUNT_CATEGORY_GROUPS.values():
+        categories.extend(group)
+    return categories
+
+
+ACCOUNT_CATEGORY_PREFIXES = {
+    "الموظفين": "EMP",
+    "الموردين": "SUP",
+    "موردين": "SUP",
+    "العملاء": "CLI",
+    "مقاولي الباطن": "SUB",
+    "الخزن الفرعية": "TRS",
+    "السواقين": "DRV",
+    "المناديب": "REP",
+    "المصروفات": "EXP",
+    "مواد": "MAT",
+    "عمالة مباشرة": "LAB",
+    "إيجار معدات": "REN",
+    "الإيرادات": "REV",
+    "فروق أسعار": "PRC",
+    "المخازن": "WHS",
+    "المعدات": "EQP",
+    "معدات ثقيلة": "HEQ",
+    "سيارات": "CAR",
+    "المشاريع": "PRJ",
+    "الأصول": "AST",
+    "الالتزامات": "LIA",
+    "حقوق الملكية": "EQY",
+    "رأس المال": "CAP",
+    "الأراضي والمباني": "LND",
+    "الأثاث والمعدات المكتبية": "FUR",
+    "الأصول غير الملموسة": "INT",
+    "مجمع إهلاك الأصول الثابتة": "ADP",
+    "أوراق القبض": "NCR",
+    "المصروفات المدفوعة مقدمًا": "PPD",
+    "أوراق الدفع": "NPY",
+    "القروض قصيرة الأجل": "STL",
+    "القروض طويلة الأجل": "LTL",
+    "مخصص مكافأة نهاية الخدمة": "EOS",
+    "التزامات الضرائب": "VAT",
+    "الاحتياطيات": "RSV",
+    "الأرباح المبقاة": "RER",
+    "جاري الشركاء": "PRT",
+    "أرباح وخسائر العام": "CYE",
+    "مردودات المبيعات": "SRT",
+    "الخصم المسموح به": "DSA",
+    "الإيرادات الأخرى": "NOI",
+    "تكلفة المبيعات": "CGS",
+    "المصروفات البيعية والتسويقية": "SEL",
+    "المصروفات التمويلية": "FIN",
+    "الاستهلاكات والإهلاكات": "DPN",
+    "الخصم المكتسب": "PCD",
+}
+EMPLOYEE_CODE_RESET_MARK = "emp-codes-seq-v1"
+JOURNAL_EQP_INFER_PURGE_MARK = "journal-eqp-infer-purge-v1"
+
+
+def next_sequential_code(prefix, existing_codes):
+    """يرجع الكود التالي بعد أعلى رقم مسجّل، من غير ما يملأ الفجوات."""
+    prefix = (prefix or "ACC").strip().upper().rstrip("-") or "ACC"
+    highest = 0
+    for raw in existing_codes:
+        value = (raw or "").strip().upper()
+        if not value:
+            continue
+        tail = None
+        if value.startswith(prefix + "-"):
+            tail = value[len(prefix) + 1:]
+        elif value.startswith(prefix) and value[len(prefix):].isdigit():
+            tail = value[len(prefix):]
+        if tail and tail.isdigit():
+            highest = max(highest, int(tail))
+    return f"{prefix}-{highest + 1:04d}"
+
+
+def next_employee_code(exclude_id=None):
+    codes = []
+    for row in Employee.query.with_entities(Employee.id, Employee.code).all():
+        if exclude_id and row.id == exclude_id:
+            continue
+        if row.code and row.code.strip():
+            codes.append(row.code)
+    for row in ChartOfAccount.query.with_entities(ChartOfAccount.code).all():
+        if row.code:
+            codes.append(row.code)
+    for model in (Subcontractor, Supplier, Equipment, Project):
+        for row in model.query.with_entities(model.code).all():
+            if row.code:
+                codes.append(row.code)
+    return next_sequential_code("EMP", codes)
+
+
+def employee_code_taken(code, exclude_id=None):
+    raw = (code or "").strip()
+    if not raw:
+        return None
+    query = Employee.query.filter(db.func.lower(Employee.code) == raw.lower())
+    if exclude_id:
+        query = query.filter(Employee.id != exclude_id)
+    return query.first()
+
+
+def next_account_code(category=None, exclude_id=None):
+    prefix = ACCOUNT_CATEGORY_PREFIXES.get((category or "").strip(), "ACC")
+    codes = []
+    for row in ChartOfAccount.query.with_entities(ChartOfAccount.id, ChartOfAccount.code).all():
+        if exclude_id and row.id == exclude_id:
+            continue
+        if row.code:
+            codes.append(row.code)
+    for model, _field_name, _where in (
+        (Subcontractor, "name", ""),
+        (Supplier, "name", ""),
+        (Employee, "name", ""),
+        (Equipment, "name", ""),
+        (Project, "project_name", ""),
+    ):
+        for row in model.query.with_entities(model.code).all():
+            if row.code:
+                codes.append(row.code)
+    return next_sequential_code(prefix, codes)
+
+
+def account_code_taken(code, exclude_id=None):
+    raw = (code or "").strip()
+    if not raw:
+        return None
+    query = ChartOfAccount.query.filter(db.func.lower(ChartOfAccount.code) == raw.lower())
+    if exclude_id:
+        query = query.filter(ChartOfAccount.id != exclude_id)
+    return query.first()
+
+
+def next_account_codes_by_category(categories):
+    return {category: next_account_code(category) for category in categories}
+
+
+def rebuild_employee_codes_once():
+    """يمسح أكواد الموظفين القديمة ويعيد ترقيمها EMP-0001 بالتسلسل مرة واحدة."""
+    if ActivityLog.query.filter_by(entity_type="sys", entity_label=EMPLOYEE_CODE_RESET_MARK).first():
+        return False
+    employees = Employee.query.order_by(Employee.id.asc(), Employee.name.asc()).all()
+    for employee in employees:
+        employee.code = None
+    db.session.flush()
+    for index, employee in enumerate(employees, start=1):
+        employee.code = f"EMP-{index:04d}"
+    db.session.add(ActivityLog(
+        created_at=datetime.now().isoformat(timespec="seconds"),
+        user_name="النظام",
+        action="تحديث",
+        entity_type="sys",
+        entity_label=EMPLOYEE_CODE_RESET_MARK,
+        summary="إعادة ترقيم أكواد الموظفين بالتسلسل",
+    ))
+    db.session.flush()
+    return True
+
+
+def sync_journal_related_accounts():
+    if is_page_view():
+        return False
+    changed = rebuild_employee_codes_once()
+    used_codes = {account.code for account in ChartOfAccount.query.with_entities(ChartOfAccount.code).all()}
+
+    # Parent accounts for core entities expected in journal debit/credit selectors.
+    parent_accounts = [
+        ("CAT-SUP", "الموردين", "الموردين"),
+        ("CAT-CLI", "العملاء", "العملاء"),
+        ("CAT-WHS", "المخازن", "المخازن"),
+        ("CAT-EQP", "المعدات", "المعدات"),
+        ("CAT-TRS", "الخزن الفرعية", "الخزن الفرعية"),
+        ("CAT-DRV", "السواقين", "السواقين"),
+        ("CAT-EMP", "الموظفين", "الموظفين"),
+        ("CAT-REP", "المناديب", "المناديب"),
+        ("CAT-SUB", "مقاولي الباطن", "مقاولي الباطن"),
+        ("CAT-PRJ", "المشاريع", "المشاريع"),
+    ]
+    for code, name, category in parent_accounts:
+        changed = ensure_chart_account(code, name, category) or changed
+
+    # حسابات تشغيلية أساسية لشركات المقاولات (خزنة رئيسية/موقع/عهد).
+    treasury_defaults = [
+        ("TRS-MAIN", "الخزنة الرئيسية", "الخزن الفرعية"),
+        ("TRS-SITE", "خزنة الموقع", "الخزن الفرعية"),
+        ("TRS-CUST", "العهد", "الخزن الفرعية"),
+        ("TRS-BANK", "الحساب البنكي", "الخزن الفرعية"),
+    ]
+    for code, name, category in treasury_defaults:
+        changed = ensure_chart_account(code, name, category) or changed
+
+    changed = ensure_custody_expense_accounts() or changed
+    changed = ensure_core_accounting_accounts() or changed
+
+    changed = ensure_operational_parties() or changed
+
+    for supplier in Supplier.query.order_by(Supplier.id).all():
+        _account, did_change = ensure_party_account(
+            f"SUP-{supplier.id:04d}",
+            supplier.name,
+            "الموردين",
+            f"مورد - {supplier.name}",
+            lambda label, current_id=supplier.id: _other_named_row(Supplier, "name", label, current_id),
+        )
+        code_status = adopt_chart_code(supplier, "الموردين", supplier.name, Supplier, "name")
+        changed = changed or did_change or code_status == "updated"
+
+    for subcontractor in Subcontractor.query.order_by(Subcontractor.id).all():
+        _account, did_change = ensure_party_account(
+            f"SUB-{subcontractor.id:04d}",
+            subcontractor.name,
+            "مقاولي الباطن",
+            f"مقاول باطن - {subcontractor.name}",
+            lambda label, current_id=subcontractor.id: _other_named_row(Subcontractor, "name", label, current_id),
+        )
+        code_status = adopt_chart_code(subcontractor, "مقاولي الباطن", subcontractor.name, Subcontractor, "name")
+        changed = changed or did_change or code_status == "updated"
+
+    client_names = sorted({(project.client_name or "").strip() for project in Project.query.all() if (project.client_name or "").strip()})
+    for client_name in client_names:
+        if find_client_account(client_name):
+            continue
+        if get_or_create_client_account(client_name):
+            changed = True
+
+    warehouse_names = sorted({
+        (tx.warehouse_name or "").strip()
+        for tx in InventoryTransaction.query.all()
+        if (tx.warehouse_name or "").strip()
+    }.union({
+        (tx.destination_warehouse or "").strip()
+        for tx in InventoryTransaction.query.all()
+        if (tx.destination_warehouse or "").strip()
+    }).union({
+        (order.warehouse_name or "").strip()
+        for order in PurchaseOrder.query.all()
+        if (order.warehouse_name or "").strip()
+    }))
+    for warehouse_name in warehouse_names:
+        if find_account_by_person("المخازن", warehouse_name):
+            continue
+        changed = ensure_chart_account(get_next_prefixed_code("WHS", used_codes), f"مخزن - {warehouse_name}", "المخازن") or changed
+
+    labor_driver_names = {(entry.description or "").strip() for entry in LaborEntry.query.all() if (entry.description or "").strip()}
+    compensation_driver_names = {
+        (value[0] or "").strip()
+        for value in DriverCompensationEntry.query.with_entities(DriverCompensationEntry.driver_name).all()
+        if (value[0] or "").strip()
+    }
+    sales_driver_names = {
+        (value[0] or "").strip()
+        for value in SalesTrip.query.with_entities(SalesTrip.driver_name).all()
+        if (value[0] or "").strip()
+    }
+    driver_names = sorted(labor_driver_names.union(compensation_driver_names).union(sales_driver_names))
+    for driver_name in driver_names:
+        if find_account_by_person("السواقين", driver_name):
+            continue
+        changed = ensure_chart_account(get_next_prefixed_code("DRV", used_codes), f"سائق - {driver_name}", "السواقين") or changed
+
+    for employee in Employee.query.order_by(Employee.id).all():
+        _account, did_change = resolve_employee_account(employee)
+        code_status = adopt_chart_code(employee, "الموظفين", employee.name, Employee, "name")
+        changed = changed or did_change or code_status == "updated"
+
+    for equipment_item in Equipment.query.order_by(Equipment.id).all():
+        _account, did_change = ensure_party_account(
+            f"EQP-{equipment_item.id:04d}",
+            equipment_item.name,
+            "المعدات",
+            f"معدات - {equipment_item.name}",
+            lambda label, current_id=equipment_item.id: _other_named_row(Equipment, "name", label, current_id),
+        )
+        code_status = adopt_chart_code(equipment_item, "المعدات", equipment_item.name, Equipment, "name")
+        changed = changed or did_change or code_status == "updated"
+
+    for project in Project.query.order_by(Project.id).all():
+        _account, did_change = ensure_party_account(
+            f"PRJ-{project.id:04d}",
+            project.project_name or project.code,
+            "المشاريع",
+            f"مشروع - {project.display_name}",
+            lambda label, current_id=project.id: _other_named_row(Project, "project_name", label, current_id),
+        )
+        code_status = adopt_chart_code(project, "المشاريع", project.project_name or project.code, Project, "project_name")
+        changed = changed or did_change or code_status == "updated"
+
+    if changed:
+        db.session.commit()
+
+
+def calculate_purchase_order_total(quantity, unit_price, discount):
+    return max((as_float(quantity) * as_float(unit_price)) - as_float(discount), 0)
+
+
+DEFAULT_WAREHOUSE = "المخزن الرئيسي"
+PO_RECEIVED_STATUSES = frozenset({"مغلق", "مدفوع"})
+PO_STATUS_OPTIONS = ["مفتوح", "مغلق", "مدفوع"]
+
+
+def normalize_name(value, fallback=""):
+    text = " ".join((value or "").split())
+    return text or fallback
+
+
+def purchase_order_is_received(order):
+    return (getattr(order, "status", "") or "") in PO_RECEIVED_STATUSES
+
+
+def ensure_purchase_order_items():
+    inspector = sa_inspect(db.engine)
+    if "purchase_order_item" not in inspector.get_table_names():
+        return
+    changed = False
+    for order in PurchaseOrder.query.all():
+        if PurchaseOrderItem.query.filter_by(purchase_order_id=order.id).first():
+            continue
+        name = normalize_name(order.item_name)
+        quantity = as_float(order.quantity)
+        unit_price = as_float(order.unit_price)
+        discount = as_float(order.discount)
+        if not name and quantity <= 0 and unit_price <= 0:
+            continue
+        db.session.add(PurchaseOrderItem(
+            purchase_order_id=order.id,
+            item_name=name or "صنف غير مسمى",
+            quantity=quantity,
+            unit_price=unit_price,
+            discount=discount,
+            value=calculate_purchase_order_total(quantity, unit_price, discount),
+        ))
+        changed = True
+    if changed:
+        db.session.commit()
+
+
+def backfill_open_purchase_orders_already_received():
+    changed = False
+    for order in PurchaseOrder.query.filter_by(status="مفتوح").all():
+        marker = f"PO-AUTO:{order.id}"
+        if InventoryTransaction.query.filter(InventoryTransaction.notes.like(f"%{marker}%")).first():
+            order.status = "مغلق"
+            changed = True
+    if changed:
+        db.session.commit()
+
+
+def parse_purchase_order_items(form):
+    names = form.getlist("item_name")
+    units = form.getlist("unit")
+    quantities = form.getlist("quantity")
+    unit_prices = form.getlist("unit_price")
+    discounts = form.getlist("discount")
+    max_len = max(len(names), len(units), len(quantities), len(unit_prices), len(discounts)) if any(
+        [names, units, quantities, unit_prices, discounts]
+    ) else 0
+    lines = []
+    for index in range(max_len):
+        name = normalize_name(names[index] if index < len(names) else "")
+        unit = normalize_name(units[index] if index < len(units) else "")
+        quantity = as_float(quantities[index] if index < len(quantities) else 0)
+        unit_price = as_float(unit_prices[index] if index < len(unit_prices) else 0)
+        discount = as_float(discounts[index] if index < len(discounts) else 0)
+        if not name and quantity <= 0 and unit_price <= 0:
+            continue
+        if quantity <= 0:
+            continue
+        lines.append({
+            "item_name": name or "صنف غير مسمى",
+            "unit": unit or None,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "discount": discount,
+            "value": calculate_purchase_order_total(quantity, unit_price, discount),
+        })
+    return lines
+
+
+def replace_purchase_order_items(order, lines):
+    for item in list(order.line_items or []):
+        db.session.delete(item)
+    db.session.flush()
+    total = 0.0
+    quantity_total = 0.0
+    discount_total = 0.0
+    first_name = None
+    first_price = 0.0
+    for line in lines:
+        db.session.add(PurchaseOrderItem(
+            purchase_order_id=order.id,
+            item_name=line["item_name"],
+            unit=line.get("unit"),
+            quantity=line["quantity"],
+            unit_price=line["unit_price"],
+            discount=line["discount"],
+            value=line["value"],
+        ))
+        total += as_float(line["value"])
+        quantity_total += as_float(line["quantity"])
+        discount_total += as_float(line["discount"])
+        if first_name is None:
+            first_name = line["item_name"]
+            first_price = as_float(line["unit_price"])
+    order.item_name = first_name
+    order.quantity = round(quantity_total, 2)
+    order.unit_price = first_price
+    order.discount = round(discount_total, 2)
+    order.total_value = round(total, 2)
+    db.session.flush()
+    db.session.expire(order, ["line_items"])
+    return order
+
+
+def purchase_order_lines(order):
+    if getattr(order, "id", None):
+        lines = PurchaseOrderItem.query.filter_by(purchase_order_id=order.id).order_by(PurchaseOrderItem.id).all()
+    else:
+        lines = list(order.line_items or [])
+    if lines:
+        return lines
+    if normalize_name(order.item_name) or as_float(order.quantity) > 0:
+        dummy = PurchaseOrderItem(
+            item_name=order.item_name or "صنف غير مسمى",
+            quantity=as_float(order.quantity),
+            unit_price=as_float(order.unit_price),
+            discount=as_float(order.discount),
+            value=as_float(order.total_value),
+        )
+        return [dummy]
+    return []
+
+
+def get_material_names():
+    names = set()
+    for value in InventoryTransaction.query.with_entities(InventoryTransaction.material_name).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    for value in PurchaseOrder.query.with_entities(PurchaseOrder.item_name).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    for value in PurchaseOrderItem.query.with_entities(PurchaseOrderItem.item_name).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    for value in StockItem.query.with_entities(StockItem.name).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    return sorted(names)
+
+
+def next_stock_item_code(exclude_id=None):
+    codes = []
+    for row in StockItem.query.with_entities(StockItem.id, StockItem.code).all():
+        if exclude_id and row.id == exclude_id:
+            continue
+        if row.code:
+            codes.append(row.code)
+    return next_sequential_code("MAT", codes)
+
+
+def stock_item_code_taken(code, exclude_id=None):
+    raw = (code or "").strip()
+    if not raw:
+        return None
+    query = StockItem.query.filter(db.func.lower(StockItem.code) == raw.lower())
+    if exclude_id:
+        query = query.filter(StockItem.id != exclude_id)
+    return query.first()
+
+
+def find_stock_item_by_name(name):
+    key = normalize_name(name).casefold()
+    if not key:
+        return None
+    for item in StockItem.query.all():
+        if normalize_name(item.name).casefold() == key:
+            return item
+    return None
+
+
+def get_or_create_stock_item(name, unit=None, commit=False):
+    name = normalize_name(name)
+    if not name or name.casefold() == "تحويل خزنة":
+        return None
+    existing = find_stock_item_by_name(name)
+    if existing:
+        if unit and not existing.unit:
+            existing.unit = normalize_name(unit) or existing.unit
+        return existing
+    item = StockItem(
+        name=name,
+        code=next_stock_item_code(),
+        unit=normalize_name(unit) or None,
+        is_active=True,
+    )
+    db.session.add(item)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return item
+
+
+def ensure_stock_items_from_history():
+    """يكوّد الأصناف القديمة من الحركات وأوامر الشراء من غير ما يغيّر القيود."""
+    if is_page_view():
+        return False
+    changed = False
+    existing_names = {normalize_name(item.name).casefold() for item in StockItem.query.all()}
+    for name in get_material_names():
+        key = normalize_name(name).casefold()
+        if key and key not in existing_names:
+            item = get_or_create_stock_item(name, commit=False)
+            if item is not None:
+                existing_names.add(key)
+                changed = True
+    by_name = {normalize_name(item.name).casefold(): item for item in StockItem.query.all()}
+    for tx in InventoryTransaction.query.filter(InventoryTransaction.stock_item_id.is_(None)).all():
+        item = by_name.get(normalize_name(tx.material_name).casefold())
+        if item:
+            tx.stock_item_id = item.id
+            changed = True
+    if changed:
+        db.session.commit()
+    return changed
+
+
+def attach_stock_item_codes(rows):
+    by_name = {normalize_name(item.name).casefold(): item for item in StockItem.query.all()}
+    for row in rows:
+        item = by_name.get(normalize_name(row.get("material") or row.get("material_name")).casefold())
+        row["item_code"] = item.display_code if item else "-"
+        row["stock_item"] = item
+    return rows
+
+
+def get_warehouse_names():
+    names = set()
+    for value in InventoryTransaction.query.with_entities(InventoryTransaction.warehouse_name).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    for value in InventoryTransaction.query.with_entities(InventoryTransaction.destination_warehouse).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    for value in PurchaseOrder.query.with_entities(PurchaseOrder.warehouse_name).all():
+        name = normalize_name(value[0])
+        if name:
+            names.add(name)
+    for account in ChartOfAccount.query.filter_by(category="المخازن").all():
+        label = warehouse_label_from_account(account)
+        if label:
+            names.add(label)
+    if DEFAULT_WAREHOUSE not in names:
+        names.add(DEFAULT_WAREHOUSE)
+    return sorted(names)
+
+
+def warehouse_label_from_account(account):
+    name = ((account.name if account else "") or "").strip()
+    if name.startswith("مخزن - "):
+        return name[7:].strip() or name
+    return name or ((account.code if account else "") or "").strip()
+
+
+def warehouse_choice_value(name=None, account_id=None, default_name=DEFAULT_WAREHOUSE):
+    if account_id:
+        return f"acc:{int(account_id)}"
+    return normalize_name(name, default_name)
+
+
+def format_stock_location(name=None, account=None, fallback=DEFAULT_WAREHOUSE):
+    if account:
+        code = (account.code or "").strip()
+        account_name = (account.name or "").strip()
+        if code and account_name:
+            return f"{code} — {account_name}"
+        return account_name or code or (name or fallback)
+    return name or fallback
+
+
+def get_warehouse_picker_groups(accounts=None):
+    warehouse_items = []
+    seen = set()
+    for name in get_warehouse_names():
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        warehouse_items.append({"value": name, "label": name, "name": name})
+
+    account_items = []
+    for account in accounts if accounts is not None else []:
+        account_items.append({
+            "value": f"acc:{account.id}",
+            "label": f"{account.code} — {account.name}",
+            "name": account.name,
+            "account_id": account.id,
+        })
+    return [
+        ("المخازن المسجلة", warehouse_items),
+        ("كل الحسابات", account_items),
+    ]
+
+
+def is_chart_warehouse_account(account):
+    if not account:
+        return False
+    code = ((account.code or "")).strip().upper()
+    category = ((account.category or "")).strip()
+    name = ((account.name or "")).strip()
+    if category == "المخازن":
+        return True
+    if code.startswith("WHS"):
+        return True
+    return name.startswith("مخزن")
+
+
+def _account_picker_item(account):
+    return {
+        "value": f"acc:{account.id}",
+        "label": f"{account.code} — {account.name}",
+        "name": account.name,
+        "account_id": account.id,
+    }
+
+
+def get_chart_warehouse_picker_groups(accounts=None):
+    items = [_account_picker_item(account) for account in (accounts or []) if is_chart_warehouse_account(account)]
+    return [("المخازن المسجلة", items)]
+
+
+def get_chart_account_picker_groups(accounts=None):
+    grouped = defaultdict(list)
+    order = []
+    seen = set()
+    for account in accounts if accounts is not None else []:
+        category = ((account.category or "")).strip() or "أخرى"
+        if category not in seen:
+            seen.add(category)
+            order.append(category)
+        grouped[category].append(_account_picker_item(account))
+    return [(category, grouped[category]) for category in order]
+
+
+def resolve_stock_account(warehouse_name=None, account_id=None):
+    if account_id:
+        account = ChartOfAccount.query.get(int(account_id))
+        if account:
+            return account
+    account = _account_from_picker_label(warehouse_name)
+    if account:
+        return account
+    name = normalize_name(warehouse_name, DEFAULT_WAREHOUSE)
+    if not name:
+        return get_account_by_code("INV-MAT")
+    account = ChartOfAccount.query.filter_by(name=name).first()
+    if account:
+        return account
+    account = ChartOfAccount.query.filter_by(name=f"مخزن - {name}").first()
+    if account:
+        return account
+    account = ChartOfAccount.query.filter(db.func.lower(ChartOfAccount.code) == name.lower()).first()
+    if account:
+        return account
+    text = (warehouse_name or "").strip()
+    if text.lower().startswith("acc:") or "—" in text or " – " in text:
+        return get_account_by_code("INV-MAT")
+    used_codes = {row[0] for row in ChartOfAccount.query.with_entities(ChartOfAccount.code).all() if row[0]}
+    ensure_chart_account(get_next_prefixed_code("WHS", used_codes), f"مخزن - {name}", "المخازن")
+    db.session.flush()
+    return (
+        ChartOfAccount.query.filter_by(name=f"مخزن - {name}").first()
+        or ChartOfAccount.query.filter_by(name=name).first()
+        or get_account_by_code("INV-MAT")
+    )
+
+
+def _account_from_picker_label(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.lower().startswith("acc:"):
+        account_id = as_int(text.split(":", 1)[1])
+        return ChartOfAccount.query.get(account_id) if account_id else None
+    for sep in (" — ", " – ", " - "):
+        if sep in text:
+            left = text.split(sep, 1)[0].strip()
+            right = text.split(sep, 1)[1].strip()
+            account = ChartOfAccount.query.filter(db.func.lower(ChartOfAccount.code) == left.lower()).first()
+            if account:
+                return account
+            account = (
+                ChartOfAccount.query.filter_by(name=right).first()
+                or ChartOfAccount.query.filter_by(name=f"مخزن - {right}").first()
+            )
+            if account:
+                return account
+    return (
+        ChartOfAccount.query.filter_by(name=text).first()
+        or ChartOfAccount.query.filter_by(name=f"مخزن - {text}").first()
+        or ChartOfAccount.query.filter(db.func.lower(ChartOfAccount.code) == text.lower()).first()
+    )
+
+
+def parse_warehouse_choice(raw, default_name=DEFAULT_WAREHOUSE):
+    value = (raw or "").strip()
+    account = _account_from_picker_label(value)
+    if account:
+        name = warehouse_label_from_account(account)
+        return name or default_name, account.id
+    name = normalize_name(value, default_name)
+    account = resolve_stock_account(warehouse_name=name)
+    return name, account.id if account else None
+
+
+def parse_optional_warehouse_choice(raw):
+    if not (raw or "").strip():
+        return None, None
+    return parse_warehouse_choice(raw, default_name="")
+
+
+def stock_location_from_account(account, fallback=DEFAULT_WAREHOUSE):
+    return warehouse_label_from_account(account) or fallback
+
+
+def _delete_po_auto_inventory(order_id):
+    marker = f"PO-AUTO:{order_id}"
+    rows = InventoryTransaction.query.filter(InventoryTransaction.notes.like(f"%{marker}%")).all()
+    for row in rows:
+        db.session.delete(row)
+    return rows
+
+
+def _po_auto_inventory_rows(order_id):
+    marker = f"PO-AUTO:{order_id}"
+    return InventoryTransaction.query.filter(InventoryTransaction.notes.like(f"%{marker}%")).all()
+
+
+def _wanted_qty_by_material(wanted_rows):
+    totals = {}
+    for payload in wanted_rows:
+        key = normalize_name(payload.get("material_name")).casefold()
+        totals[key] = totals.get(key, 0.0) + as_float(payload.get("quantity"))
+    return totals
+
+
+def _assert_receipt_reduction_allowed(order, wanted_rows):
+    wanted_qty = _wanted_qty_by_material(wanted_rows)
+    existing_qty = {}
+    sample_row = {}
+    for row in _po_auto_inventory_rows(order.id):
+        key = normalize_name(row.material_name).casefold()
+        existing_qty[key] = existing_qty.get(key, 0.0) + as_float(row.quantity)
+        sample_row[key] = row
+    for key, old_qty in existing_qty.items():
+        new_qty = as_float(wanted_qty.get(key, 0))
+        reduction = old_qty - new_qty
+        if reduction <= 0.0001:
+            continue
+        row = sample_row[key]
+        available = available_stock_qty(row.project_id, row.warehouse_name, row.material_name)
+        if available + 0.0001 < reduction:
+            raise ValueError(
+                f"لا يمكن تخفيض استلام {row.material_name}: الرصيد المتبقي في المخزن {round(available, 2)}"
+            )
+
+
+def sync_purchase_order_to_inventory(order, commit=True):
+    marker = f"PO-AUTO:{order.id}"
+    existing = _po_auto_inventory_rows(order.id)
+    lines = purchase_order_lines(order) if purchase_order_is_received(order) else []
+    warehouse = normalize_name(order.warehouse_name, DEFAULT_WAREHOUSE)
+    account_id = getattr(order, "warehouse_account_id", None)
+    if not account_id:
+        account = resolve_stock_account(warehouse_name=warehouse)
+        account_id = account.id if account else None
+    wanted_rows = []
+    for index, line in enumerate(lines):
+        quantity = as_float(line.quantity)
+        if quantity <= 0:
+            continue
+        key = normalize_name(line.item_name).casefold()
+        unit_cost = as_float(line.value) / quantity if quantity else as_float(line.unit_price)
+        material_name = normalize_name(line.item_name, "صنف غير مسمى")
+        stock_item = get_or_create_stock_item(material_name, getattr(line, "unit", None), commit=False)
+        wanted_rows.append({
+            "project_id": order.project_id,
+            "supplier_id": order.supplier_id,
+            "warehouse_name": warehouse,
+            "warehouse_account_id": account_id,
+            "material_name": material_name,
+            "stock_item_id": stock_item.id if stock_item else None,
+            "unit": getattr(line, "unit", None),
+            "quantity": quantity,
+            "unit_cost": unit_cost,
+            "transaction_type": "إضافة",
+            "date": order.date or date.today().isoformat(),
+            "notes": (
+                f"{marker}:{index}:{key} - إضافة تلقائية من أمر شراء {order.document_number} - "
+                f"المورد {(order.supplier.name if order.supplier else 'بدون مورد')}"
+            ),
+        })
+
+    _assert_receipt_reduction_allowed(order, wanted_rows)
+
+    unused = list(existing)
+    for payload in wanted_rows:
+        key = normalize_name(payload["material_name"]).casefold()
+        match = None
+        for row in unused:
+            if normalize_name(row.material_name).casefold() == key:
+                match = row
+                break
+        if match:
+            unused.remove(match)
+            for field, value in payload.items():
+                setattr(match, field, value)
+        else:
+            db.session.add(InventoryTransaction(**payload))
+    for row in unused:
+        db.session.delete(row)
+    if commit:
+        db.session.commit()
+
+
+def sync_purchase_order_journal(order):
+    """أمر الشراء يفضل في شاشته. لا يُنشأ له قيد يومية، وأي قيد تلقائي قديم يتشال."""
+    if order and order.supplier_id:
+        get_or_create_supplier_account(order.supplier)
+    marker = f"PO-JRN-AUTO:{order.id}"
+    replace_auto_journals(marker, [], commit=True)
+
+
+def is_purchase_order_inventory(transaction):
+    return "PO-AUTO:" in (transaction.notes or "")
+
+
+def lookup_existing_account(warehouse_name=None, account_id=None):
+    if account_id:
+        account = ChartOfAccount.query.get(int(account_id))
+        if account:
+            return account
+    return _account_from_picker_label(warehouse_name)
+
+
+def _transaction_accounts(transaction):
+    source = lookup_existing_account(
+        getattr(transaction, "warehouse_name", None),
+        getattr(transaction, "warehouse_account_id", None),
+    )
+    dest = lookup_existing_account(
+        getattr(transaction, "destination_warehouse", None),
+        getattr(transaction, "destination_account_id", None),
+    )
+    return source, dest
+
+
+INV_TYPE_IN = "وارد"
+INV_TYPE_OUT = "منصرف"
+INV_TYPE_OPTIONS = (INV_TYPE_IN, INV_TYPE_OUT)
+
+
+def normalize_inventory_type(value):
+    text = (value or "").strip()
+    if text in {INV_TYPE_IN, "إضافة"}:
+        return INV_TYPE_IN
+    if text in {INV_TYPE_OUT, "سحب", "تحويل"}:
+        return INV_TYPE_OUT
+    return INV_TYPE_IN
+
+
+def inventory_type_label(value):
+    return normalize_inventory_type(value)
+
+
+def is_legacy_stock_transfer(transaction):
+    return ((getattr(transaction, "transaction_type", "") or "").strip() == "تحويل")
+
+
+def is_monetary_account_transfer(transaction):
+    """حركة خزنة: قيد مالي بالمبلغ، من غير ما يغيّر كمية أصناف."""
+    source, dest = _transaction_accounts(transaction)
+    raw = (getattr(transaction, "transaction_type", "") or "").strip()
+    kind = normalize_inventory_type(raw)
+    if raw == "تحويل" or kind == INV_TYPE_OUT:
+        if not source or not dest or source.id == dest.id:
+            return False
+        return is_operational_treasury_account(source)
+    if kind == INV_TYPE_IN or raw == "إضافة":
+        return bool(source) and is_operational_treasury_account(source)
+    return False
+
+
+def inventory_posting_amount(transaction):
+    """قيمة القيد: الكمية × تكلفة الوحدة، أو الكمية نفسها لو الحركة مالية بدون تكلفة."""
+    qty = as_float(getattr(transaction, "quantity", 0))
+    cost = as_float(getattr(transaction, "unit_cost", 0))
+    if cost > 0:
+        return round(qty * cost, 2)
+    if is_monetary_account_transfer(transaction):
+        return round(qty, 2)
+    return 0.0
+
+
+def _attach_inventory_accounts(transaction):
+    """يربط الحركة القديمة بحساب الدليل من الاسم أو التسمية المحفوظة."""
+    changed = False
+    if not getattr(transaction, "warehouse_account_id", None):
+        account = lookup_existing_account(getattr(transaction, "warehouse_name", None))
+        if account:
+            transaction.warehouse_account_id = account.id
+            changed = True
+    dest_name = getattr(transaction, "destination_warehouse", None)
+    if dest_name and not getattr(transaction, "destination_account_id", None):
+        account = lookup_existing_account(dest_name)
+        if account:
+            transaction.destination_account_id = account.id
+            changed = True
+    return changed
+
+
+def repair_inventory_transaction_for_ledger(transaction, book=None):
+    """يكمل حسابات وتكلفة الحركة القديمة قبل ترحيل قيمتها على الدليل."""
+    changed = _attach_inventory_accounts(transaction)
+    cost = as_float(getattr(transaction, "unit_cost", 0))
+    if cost > 0:
+        return changed
+    if is_monetary_account_transfer(transaction):
+        transaction.unit_cost = 1
+        return True
+    if book is not None:
+        avg = book.avg_cost_excluding(transaction)
+    else:
+        avg = average_stock_cost(
+            transaction.project_id,
+            transaction.warehouse_name,
+            transaction.material_name,
+            exclude_tx_id=getattr(transaction, "id", None),
+        )
+    if avg > 0:
+        transaction.unit_cost = avg
+        return True
+    return changed
+
+
+def _inventory_marker_id(description):
+    token = "INV-AUTO:"
+    if token not in (description or ""):
+        return None
+    tail = description.split(token, 1)[1]
+    digits = ""
+    for char in tail:
+        if char.isdigit():
+            digits += char
+        elif digits:
+            break
+    return as_int(digits) or None
+
+
+def _existing_inventory_journal_amounts():
+    """قيد واحد لكل الحركات، بدل استعلام لكل حركة."""
+    amounts = defaultdict(list)
+    for description, amount in (
+        JournalEntry.query.with_entities(JournalEntry.description, JournalEntry.amount)
+        .filter(JournalEntry.description.like("%INV-AUTO:%"))
+        .all()
+    ):
+        tx_id = _inventory_marker_id(description)
+        if tx_id:
+            amounts[tx_id].append(as_float(amount))
+    return amounts
+
+
+def ensure_inventory_transaction_journals():
+    """حركات المخزون تفضل في شاشة المخزون. لا يُنشأ لها قيد يومية تلقائي."""
+    return False
+
+
+def stock_effects(transaction):
+    if is_monetary_account_transfer(transaction):
+        return []
+    qty = as_float(transaction.quantity)
+    source = normalize_name(transaction.warehouse_name, DEFAULT_WAREHOUSE)
+    dest = normalize_name(transaction.destination_warehouse)
+    raw = (transaction.transaction_type or "").strip()
+    kind = normalize_inventory_type(raw)
+    if raw == "تحويل":
+        moves = [(source, -qty)]
+        if dest:
+            moves.append((dest, qty))
+        return moves
+    if kind == INV_TYPE_IN or raw == "إضافة":
+        return [(source, qty)]
+    if kind == INV_TYPE_OUT or raw == "سحب":
+        return [(source, -qty)]
+    return [(source, qty)]
+
+
+def stock_key(project_id, warehouse, material):
+    return (
+        project_id or 0,
+        normalize_name(warehouse, DEFAULT_WAREHOUSE).casefold(),
+        normalize_name(material).casefold(),
+    )
+
+
+def _empty_stock_bucket():
+    return {
+        "project": None,
+        "warehouse": "",
+        "material": "",
+        "receipt_qty": 0.0,
+        "receipt_value": 0.0,
+        "issue_qty": 0.0,
+        "qty": 0.0,
+        "value": 0.0,
+    }
+
+
+def _apply_stock_transaction(buckets, tx):
+    cost = as_float(tx.unit_cost)
+    for warehouse, signed_qty in stock_effects(tx):
+        key = stock_key(tx.project_id, warehouse, tx.material_name)
+        row = buckets[key]
+        row["project"] = tx.project
+        row["warehouse"] = warehouse
+        row["material"] = normalize_name(tx.material_name)
+        if signed_qty > 0:
+            row["receipt_qty"] += signed_qty
+            row["receipt_value"] += signed_qty * cost
+            row["qty"] += signed_qty
+            row["value"] += signed_qty * cost
+        elif signed_qty < 0:
+            issue = -signed_qty
+            row["issue_qty"] += issue
+            avg = (row["value"] / row["qty"]) if row["qty"] else cost
+            row["qty"] -= issue
+            row["value"] = round(max(row["qty"], 0) * avg, 2) if row["qty"] > 0 else 0.0
+
+
+class StockBook:
+    """أرصدة وتكلفة الأصناف من مسح واحد. القراءة بتقرّب نفس تقريب شاشة الأرصدة."""
+
+    def __init__(self):
+        self.buckets = defaultdict(_empty_stock_bucket)
+
+    @classmethod
+    def load(cls, exclude_tx_id=None):
+        book = cls()
+        query = InventoryTransaction.query.order_by(InventoryTransaction.date.asc(), InventoryTransaction.id.asc())
+        for tx in query.all():
+            if exclude_tx_id and tx.id == exclude_tx_id:
+                continue
+            book.apply(tx)
+        return book
+
+    def apply(self, tx):
+        _apply_stock_transaction(self.buckets, tx)
+
+    def _bucket(self, project_id, warehouse, material):
+        return self.buckets.get(stock_key(project_id, warehouse, material))
+
+    def available_qty(self, project_id, warehouse, material):
+        row = self._bucket(project_id, warehouse, material)
+        if not row:
+            return 0.0
+        return round(row["qty"], 4)
+
+    def avg_cost(self, project_id, warehouse, material):
+        row = self._bucket(project_id, warehouse, material)
+        if not row or not row["receipt_qty"]:
+            return 0.0
+        return round(row["receipt_value"] / row["receipt_qty"], 4)
+
+    def avg_cost_excluding(self, tx):
+        """نفس average_stock_cost مع استبعاد الحركة، من غير ما نعيد قراءة الجدول."""
+        row = self._bucket(tx.project_id, tx.warehouse_name, tx.material_name)
+        if not row or not row["receipt_qty"]:
+            return 0.0
+        receipt_qty = row["receipt_qty"]
+        receipt_value = row["receipt_value"]
+        source_key = stock_key(tx.project_id, tx.warehouse_name, tx.material_name)
+        for warehouse, signed_qty in stock_effects(tx):
+            if signed_qty > 0 and stock_key(tx.project_id, warehouse, tx.material_name) == source_key:
+                receipt_qty -= signed_qty
+                receipt_value -= signed_qty * as_float(tx.unit_cost)
+        if receipt_qty <= 0.0000001:
+            return 0.0
+        return round(receipt_value / receipt_qty, 4)
+
+    def note_unit_cost(self, tx, old_cost, new_cost):
+        delta = as_float(new_cost) - as_float(old_cost)
+        if abs(delta) < 0.0000001:
+            return
+        for warehouse, signed_qty in stock_effects(tx):
+            if signed_qty <= 0:
+                continue
+            row = self.buckets[stock_key(tx.project_id, warehouse, tx.material_name)]
+            row["receipt_value"] += signed_qty * delta
+
+    def rows(self):
+        rows = []
+        for row in self.buckets.values():
+            if not row["material"]:
+                continue
+            avg = (row["receipt_value"] / row["receipt_qty"]) if row["receipt_qty"] else 0.0
+            published = dict(row)
+            published["avg_cost"] = round(avg, 4)
+            published["qty"] = round(row["qty"], 4)
+            published["value"] = round(max(row["qty"], 0) * avg, 2)
+            published["closing_qty"] = published["qty"]
+            published["closing_value_avg"] = published["value"]
+            rows.append(published)
+        rows.sort(key=lambda item: (
+            (item["project"].display_name if item["project"] else ""),
+            item["warehouse"],
+            item["material"],
+        ))
+        return rows
+
+
+def _request_stock_book():
+    if not has_request_context():
+        return None
+    return getattr(g, "_stock_book", None)
+
+
+def begin_stock_book():
+    """مسح واحد يتعاد استخدامه لبند بند في نفس الحفظ، بدل ما كل بند يعيد قراءة كل الحركات."""
+    book = StockBook.load()
+    g._stock_book = book
+    return book
+
+
+def note_stock_movement(transaction):
+    book = _request_stock_book()
+    if book is not None and transaction is not None:
+        book.apply(transaction)
+
+
+def end_stock_book():
+    if has_request_context():
+        g._stock_book = None
+
+
+def build_stock_rows(exclude_tx_id=None):
+    return StockBook.load(exclude_tx_id=exclude_tx_id).rows()
+
+
+def available_stock_qty(project_id, warehouse, material, exclude_tx_id=None):
+    book = _request_stock_book()
+    if book is not None and not exclude_tx_id:
+        return book.available_qty(project_id, warehouse, material)
+    return StockBook.load(exclude_tx_id=exclude_tx_id).available_qty(project_id, warehouse, material)
+
+
+def average_stock_cost(project_id, warehouse, material, exclude_tx_id=None):
+    book = _request_stock_book()
+    if book is not None and not exclude_tx_id:
+        return book.avg_cost(project_id, warehouse, material)
+    return StockBook.load(exclude_tx_id=exclude_tx_id).avg_cost(project_id, warehouse, material)
+
+
+def build_inventory_valuation_rows():
+    buckets = defaultdict(lambda: {
+        "project": None,
+        "warehouse": "",
+        "material_name": "",
+        "receipt_qty": 0.0,
+        "receipt_value": 0.0,
+        "issue_qty": 0.0,
+        "fifo_remaining": deque(),
+    })
+    query = InventoryTransaction.query.order_by(InventoryTransaction.date.asc(), InventoryTransaction.id.asc())
+    for tx in query.all():
+        cost = as_float(tx.unit_cost)
+        for warehouse, signed_qty in stock_effects(tx):
+            key = stock_key(tx.project_id, warehouse, tx.material_name)
+            group = buckets[key]
+            group["project"] = tx.project
+            group["warehouse"] = warehouse
+            group["material_name"] = normalize_name(tx.material_name)
+            if signed_qty > 0:
+                group["receipt_qty"] += signed_qty
+                group["receipt_value"] += signed_qty * cost
+                group["fifo_remaining"].append([signed_qty, cost])
+            elif signed_qty < 0:
+                quantity = -signed_qty
+                group["issue_qty"] += quantity
+                while quantity > 0 and group["fifo_remaining"]:
+                    lot = group["fifo_remaining"][0]
+                    if quantity >= lot[0]:
+                        quantity -= lot[0]
+                        group["fifo_remaining"].popleft()
+                    else:
+                        lot[0] -= quantity
+                        quantity = 0
+    rows = []
+    for group in buckets.values():
+        if not group["material_name"]:
+            continue
+        closing_qty = group["receipt_qty"] - group["issue_qty"]
+        avg_cost = (group["receipt_value"] / group["receipt_qty"]) if group["receipt_qty"] else 0.0
+        rows.append({
+            "project": group["project"],
+            "warehouse": group["warehouse"],
+            "material_name": group["material_name"],
+            "receipt_qty": round(group["receipt_qty"], 4),
+            "issue_qty": round(group["issue_qty"], 4),
+            "closing_qty": round(closing_qty, 4),
+            "avg_cost": round(avg_cost, 4),
+            "closing_value_avg": round(max(closing_qty, 0) * avg_cost, 2),
+            "closing_value_fifo": round(sum(lot[0] * lot[1] for lot in group["fifo_remaining"]), 2),
+        })
+    rows.sort(key=lambda item: (
+        (item["project"].display_name if item["project"] else ""),
+        item["warehouse"],
+        item["material_name"],
+    ))
+    return rows
+
+
+def assert_inventory_quantity_available(transaction, exclude_tx_id=None):
+    qty = as_float(transaction.quantity)
+    if qty <= 0:
+        raise ValueError("أدخل كمية أكبر من صفر")
+    raw = (transaction.transaction_type or "").strip()
+    kind = normalize_inventory_type(raw)
+    warehouse = normalize_name(transaction.warehouse_name, DEFAULT_WAREHOUSE)
+    dest = normalize_name(transaction.destination_warehouse)
+    if kind == INV_TYPE_OUT or raw in {"سحب", "تحويل"}:
+        if kind == INV_TYPE_OUT and raw != "سحب" and not dest:
+            raise ValueError("المنصرف يتطلب اختيار الحساب الوجهة")
+        if raw == "تحويل" and not dest:
+            raise ValueError("تحويل المخزون يتطلب تحديد المخزن الوجهة")
+        if dest and dest.casefold() == warehouse.casefold():
+            source_account, dest_account = _transaction_accounts(transaction)
+            if not source_account or not dest_account or source_account.id == dest_account.id:
+                raise ValueError("الحساب الوجهة يجب أن يختلف عن المخزن المصدر")
+    else:
+        return
+    if is_monetary_account_transfer(transaction):
+        source_account, _dest_account = _transaction_accounts(transaction)
+        amount = inventory_posting_amount(transaction)
+        balances = build_account_balances()
+        available_cash = as_float(balances.get(source_account.id, 0))
+        if amount - available_cash > 0.0001:
+            raise ValueError(
+                f"رصيد {source_account.name} لا يكفي للتحويل. الرصيد الحالي {round(available_cash, 2)}"
+            )
+        return
+    available = available_stock_qty(transaction.project_id, warehouse, transaction.material_name, exclude_tx_id)
+    if qty - available > 0.0001:
+        raise ValueError(
+            f"الكمية غير متاحة في مخزن {warehouse}. الرصيد الحالي {round(available, 2)}"
+        )
+
+
+def inventory_journal_description(transaction, marker, inventory_account, dest_account=None):
+    kind = inventory_type_label(transaction.transaction_type)
+    qty = as_float(transaction.quantity)
+    cost = as_float(transaction.unit_cost)
+    amount = inventory_posting_amount(transaction)
+    unit = (transaction.unit or "وحدة").strip() or "وحدة"
+    material = transaction.material_name or "صنف"
+    source_label = format_stock_location(
+        transaction.warehouse_name,
+        getattr(transaction, "warehouse_account", None) or inventory_account,
+    )
+    dest_label = ""
+    if dest_account:
+        dest_label = f" إلى {dest_account.code} {dest_account.name}"
+    return (
+        f"{marker} - {kind} {qty:g} {unit} {material} "
+        f"بتكلفة {format_grouped_number(cost)} بقيمة {format_grouped_number(amount)} "
+        f"من {source_label}{dest_label}"
+    )[:256]
+
+
+def inventory_transaction_from_journal(entry):
+    description = getattr(entry, "description", None) or ""
+    token = "INV-AUTO:"
+    if token not in description:
+        return None
+    tail = description.split(token, 1)[1]
+    digits = ""
+    for char in tail:
+        if char.isdigit():
+            digits += char
+        elif digits:
+            break
+    tx_id = as_int(digits)
+    return InventoryTransaction.query.get(tx_id) if tx_id else None
+
+
+def sync_inventory_transaction_journal(transaction, commit=True):
+    """وارد: مدين المخزن بالقيمة. منصرف: مدين الحساب الوجهة / دائن المخزن، فيظهر في كشفه كمية وفلوس."""
+    marker = f"INV-AUTO:{transaction.id}"
+    if is_purchase_order_inventory(transaction):
+        replace_auto_journals(marker, [], commit=commit)
+        return
+
+    amount = inventory_posting_amount(transaction)
+    source_account = resolve_stock_account(
+        transaction.warehouse_name,
+        getattr(transaction, "warehouse_account_id", None),
+    )
+    dest_account = resolve_stock_account(
+        transaction.destination_warehouse,
+        getattr(transaction, "destination_account_id", None),
+    ) if normalize_name(transaction.destination_warehouse) else None
+    fallback_inventory = get_account_by_code("INV-MAT")
+    inventory_account = source_account or fallback_inventory
+    project = transaction.project
+    payloads = []
+    raw = (transaction.transaction_type or "").strip()
+    kind = normalize_inventory_type(raw)
+
+    if amount > 0 and inventory_account:
+        debit_account = None
+        credit_account = None
+        if kind == INV_TYPE_IN or raw == "إضافة":
+            debit_account = inventory_account
+            credit_account = get_or_create_supplier_account(transaction.supplier) if transaction.supplier_id else None
+            if not credit_account:
+                credit_account = get_account_by_code("LIB-PAY")
+        elif dest_account and dest_account.id != inventory_account.id:
+            debit_account = dest_account
+            credit_account = inventory_account
+        elif raw == "سحب":
+            debit_account = get_account_by_code("EXP-MAT")
+            credit_account = inventory_account
+
+        if debit_account and credit_account:
+            payloads.append({
+                "date": transaction.date or date.today().isoformat(),
+                "reference": f"INV-{transaction.id:06d}",
+                "journal_name": "تقييم المخزون",
+                "stock_move": transaction.transaction_type,
+                "status": "مرحل",
+                "description": inventory_journal_description(
+                    transaction, marker, inventory_account, dest_account
+                ),
+                "debit_account_id": debit_account.id,
+                "credit_account_id": credit_account.id,
+                "amount": amount,
+                "project_id": transaction.project_id,
+                "cost_center": f"مشروع - {project.display_name}" if project else None,
+            })
+
+    replace_auto_journals(marker, payloads, commit=commit)
+
+
+
+def normalize_journal_status(value):
+    return "مرحل" if value == "مرحل" else "مسودة"
+
+
+def format_grouped_number(value):
+    number = as_float(value)
+    if abs(number - round(number)) < 0.000001:
+        formatted = f"{int(round(number)):,}"
+        return formatted.replace(",", ".")
+
+    whole, decimal = f"{number:,.2f}".split(".")
+    return f"{whole.replace(',', '.')},{decimal}"
+
+
+def format_pay_input(value):
+    number = as_float(value)
+    if abs(number - round(number)) < 0.000001:
+        return str(int(round(number)))
+    return f"{number:.2f}"
+
+
+def format_qty_number(value):
+    number = as_float(value)
+    if abs(number - round(number)) < 0.000001:
+        return str(int(round(number)))
+    shown = format(number.normalize(), "f")
+    if "." in shown:
+        shown = shown.rstrip("0").rstrip(".")
+    return shown or "0"
+
+
+def hidden_account_ids_for_query():
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return set()
+        from services.authz import hidden_treasury_ids
+        return set(hidden_treasury_ids() or [])
+    except Exception:
+        return set()
+
+
+HIDDEN_COUNTERPARTY_LABEL = "حساب داخلي"
+
+
+def entry_touches_hidden_accounts(entry, hidden_ids=None):
+    hidden = set(hidden_ids) if hidden_ids is not None else hidden_account_ids_for_query()
+    if not hidden or not entry:
+        return False
+    return entry.debit_account_id in hidden or entry.credit_account_id in hidden
+
+
+def _account_is_hidden(account_id, hidden_ids):
+    return bool(account_id) and account_id in hidden_ids
+
+
+def counter_account_display(account, hidden_ids=None):
+    hidden = set(hidden_ids) if hidden_ids is not None else hidden_account_ids_for_query()
+    if not account:
+        return "-"
+    if _account_is_hidden(account.id, hidden):
+        return HIDDEN_COUNTERPARTY_LABEL
+    return f"{account.code} - {account.name}"
+
+
+def build_account_balances(accounts=None, posted_only=True):
+    """أرصدة الحسابات = الرصيد الافتتاحي + المدين - الدائن.
+
+    القيود المسودة لا تؤثر على الأرصدة، فقط القيود المرحلة (مبدأ الترحيل المحاسبي).
+    حركة الطرف الظاهر مقابل خزنة مخفية تدخل في رصيده حتى يتطابق الحساب عند الكل.
+    """
+    account_rows = accounts or ChartOfAccount.query.order_by(ChartOfAccount.code, ChartOfAccount.name).all()
+    balances = {account.id: as_float(getattr(account, "opening_balance", 0)) for account in account_rows}
+    hidden = hidden_account_ids_for_query()
+
+    query = JournalEntry.query
+    if posted_only:
+        query = query.filter(JournalEntry.status == "مرحل")
+
+    for entry in query.all():
+        amount = as_float(entry.amount)
+        if entry.debit_account_id in balances and not _account_is_hidden(entry.debit_account_id, hidden):
+            balances[entry.debit_account_id] += amount
+        if entry.credit_account_id in balances and not _account_is_hidden(entry.credit_account_id, hidden):
+            balances[entry.credit_account_id] -= amount
+    return balances
+
+
+def get_treasury_balance(accounts=None, balances=None):
+    account_rows = accounts or ChartOfAccount.query.order_by(ChartOfAccount.code, ChartOfAccount.name).all()
+    account_balances = balances or build_account_balances(account_rows)
+    main_account, sub_accounts = split_treasury_accounts(account_rows)
+    if main_account:
+        return get_main_treasury_rollup_balance(account_rows, account_balances)
+
+    return sum(
+        account_balances.get(account.id, 0)
+        for account in sub_accounts
+    )
+
+
+def get_journal_entries_in_range(from_date=None, to_date=None, posted_only=True, include_hidden_counterparts=False):
+    query = JournalEntry.query
+    if posted_only:
+        query = query.filter(JournalEntry.status == "مرحل")
+    if from_date:
+        query = query.filter(JournalEntry.date >= from_date)
+    if to_date:
+        query = query.filter(JournalEntry.date <= to_date)
+    entries = query.order_by(JournalEntry.date.asc(), JournalEntry.id.asc()).all()
+    hidden = hidden_account_ids_for_query()
+    if not hidden or include_hidden_counterparts:
+        return entries
+    return [entry for entry in entries if not entry_touches_hidden_accounts(entry, hidden)]
+
+
+def is_treasury_account(account):
+    code = (account.code or "").strip().upper()
+    name = (account.name or "")
+    category = (account.category or "")
+    if category == "المصروفات":
+        return False
+    if category == "الخزن الفرعية":
+        return True
+    if code == "CAT-TRS" or code.startswith("TRS-"):
+        return True
+    name_keywords = ("خزنة", "خزنه", "صندوق")
+    return any(keyword in name for keyword in name_keywords)
+
+
+def is_operational_treasury_account(account):
+    if not is_treasury_account(account):
+        return False
+    code = (account.code or "").strip().upper()
+    return not code.startswith("CAT-")
+
+
+PIN_TREASURY_CODES = {"TRS-MAIN", "TRS-BANK"}
+PIN_TREASURY_NAMES = {"الخزنة الرئيسية", "الحساب البنكي"}
+
+
+def is_pin_protected_treasury(account):
+    """العين السحرية للـ PIN تظهر على الخزنة الرئيسية والحساب البنكي فقط."""
+    if not account or not is_operational_treasury_account(account):
+        return False
+    code = (account.code or "").strip().upper()
+    name = (account.name or "").strip()
+    if code in PIN_TREASURY_CODES or name in PIN_TREASURY_NAMES:
+        return True
+    return "بنكي" in name or name.startswith("بنك")
+
+
+def has_pin_protected_treasury(accounts):
+    return any(is_pin_protected_treasury(account) for account in (accounts or []))
+
+
+def split_treasury_accounts(accounts):
+    operational_treasury_accounts = [account for account in accounts if is_operational_treasury_account(account)]
+    main_account = next(
+        (
+            account
+            for account in operational_treasury_accounts
+            if (account.code or "").strip().upper() == "TRS-MAIN"
+            or (account.name or "").strip() == "الخزنة الرئيسية"
+        ),
+        None,
+    )
+    sub_accounts = [account for account in operational_treasury_accounts if not main_account or account.id != main_account.id]
+    return main_account, sub_accounts
+
+
+def get_main_treasury_rollup_balance(accounts=None, balances=None):
+    account_rows = accounts or ChartOfAccount.query.order_by(ChartOfAccount.code, ChartOfAccount.name).all()
+    account_balances = balances or build_account_balances(account_rows)
+    main_account, sub_accounts = split_treasury_accounts(account_rows)
+    main_own_balance = account_balances.get(main_account.id, 0.0) if main_account else 0.0
+    sub_total_balance = sum(account_balances.get(account.id, 0.0) for account in sub_accounts)
+    return main_own_balance + sub_total_balance
+
+
+def classify_balance_sheet_section(account):
+    category = (account.category or "").strip()
+    if category in {
+        "الأصول",
+        "المخازن",
+        "المعدات",
+        "معدات ثقيلة",
+        "سيارات",
+        "الخزن الفرعية",
+        "العملاء",
+        "المشاريع",
+        "مواد",
+        "السواقين",
+        "المناديب",
+    } or category in EXTRA_ACCOUNT_CATEGORY_GROUPS["assets"]:
+        return "assets"
+    if category in {"الالتزامات", "الموردين", "موردين", "مقاولي الباطن", "الموظفين"} or category in EXTRA_ACCOUNT_CATEGORY_GROUPS["liabilities"]:
+        return "liabilities"
+    if category in {"حقوق الملكية", "رأس المال"} or category in EXTRA_ACCOUNT_CATEGORY_GROUPS["equity"]:
+        return "equity"
+    return "other"
+
+
+def account_nature(account):
+    """طبيعة الحساب للعرض: مدين (أصول/مصروف/عهدة/خزنة/عميل) أو دائن (خصوم/إيراد/مورد)."""
+    section = classify_balance_sheet_section(account)
+    if section == "assets":
+        return "مدين"
+    if section in {"liabilities", "equity"}:
+        return "دائن"
+    category = (account.category or "").strip()
+    if category in {"المصروفات", "مواد", "عمالة مباشرة", "إيجار معدات"} or category in EXTRA_ACCOUNT_CATEGORY_GROUPS["expense"]:
+        return "مدين"
+    if category in {"الإيرادات", "فروق أسعار"} or category in EXTRA_ACCOUNT_CATEGORY_GROUPS["revenue"]:
+        return "دائن"
+    return "مدين"
+
+
+def _signed_balance_parts(value):
+    amount = round(as_float(value), 2)
+    if amount > 0.009:
+        return amount, "مدين"
+    if amount < -0.009:
+        return round(abs(amount), 2), "دائن"
+    return 0.0, "متزن"
+
+
+def find_client_account(client_name):
+    """بحث عن حساب العميل دون إنشائه."""
+    clean_name = canonical_client_name(client_name)
+    if not clean_name:
+        return None
+    wanted = clean_name.casefold()
+    for account in ChartOfAccount.query.filter_by(category="العملاء").all():
+        suffix = account.name or ""
+        if suffix.startswith("عميل - "):
+            suffix = suffix[7:]
+        if normalize_client_name(suffix).casefold() == wanted:
+            return account
+    return None
+
+
+def clip_text(text, limit=240):
+    value = " ".join((text or "").split())
+    if len(value) <= limit:
+        return value
+    return value[: max(limit - 1, 1)].rstrip() + "…"
+
+
+def strip_auto_marker(text):
+    raw = (text or "").strip()
+    token = "-AUTO:"
+    if token not in raw:
+        return raw
+    tail = raw.split(token, 1)[1]
+    cut = 0
+    for index, char in enumerate(tail):
+        if char.isdigit():
+            cut = index + 1
+            continue
+        if char in " -–—:" and cut:
+            cut = index + 1
+            continue
+        break
+    cleaned = tail[cut:].strip(" -–—")
+    return cleaned or raw
+
+
+def progress_item_work_label(item):
+    text = (getattr(item, "description", None) or "").strip()
+    if not text:
+        boq = getattr(item, "boq_item", None)
+        text = ((boq.name if boq else "") or "").strip()
+    return text
+
+
+def progress_payment_work_lines(payment):
+    lines = []
+    for item in (getattr(payment, "items", None) or []):
+        name = progress_item_work_label(item)
+        qty = as_float(getattr(item, "quantity", 0))
+        unit = (getattr(item, "unit", None) or "").strip()
+        if not name and qty <= 0 and as_float(getattr(item, "value", 0)) <= 0:
+            continue
+        label = name or "بند أعمال"
+        if qty:
+            measure = f"{qty:g} {unit}".strip()
+            label = f"{label} ({measure})"
+        lines.append(label)
+    return lines
+
+
+def progress_payment_works_label(payment, limit=6):
+    lines = progress_payment_work_lines(payment)
+    if not lines:
+        return ""
+    if len(lines) <= limit:
+        return "، ".join(lines)
+    return "، ".join(lines[:limit]) + f" +{len(lines) - limit}"
+
+
+def purchase_order_item_lines(order):
+    rows = list(getattr(order, "line_items", None) or [])
+    lines = []
+    if rows:
+        for item in rows:
+            name = (getattr(item, "item_name", None) or "").strip()
+            if not name:
+                continue
+            qty = as_float(getattr(item, "quantity", 0))
+            unit = (getattr(item, "unit", None) or "").strip()
+            if qty:
+                lines.append(f"{name} ({qty:g} {unit})".strip())
+            else:
+                lines.append(name)
+        return lines
+    name = (getattr(order, "item_name", None) or "").strip()
+    if not name:
+        return []
+    qty = as_float(getattr(order, "quantity", 0))
+    return [f"{name} ({qty:g})" if qty else name]
+
+
+def purchase_order_items_label(order, limit=6):
+    lines = purchase_order_item_lines(order)
+    if not lines:
+        return ""
+    if len(lines) <= limit:
+        return "، ".join(lines)
+    return "، ".join(lines[:limit]) + f" +{len(lines) - limit}"
+
+
+def _quantity_label(qty, unit=""):
+    qty = as_float(qty)
+    if qty <= 0:
+        return "-"
+    shown = format_qty_number(qty)
+    return f"{shown} {(unit or '').strip()}".strip()
+
+
+def statement_narration(entry):
+    """بيان منظم للكشف: يشيل علامة القيد الآلي ويضيف بند المستخلص أو صنف أمر الشراء."""
+    raw = (getattr(entry, "description", None) or "").strip()
+    title = strip_auto_marker(raw)
+    detail = ""
+    qty = 0.0
+    qty_label = "-"
+    source = ""
+    entity_type, entity_id = auto_journal_source(entry)
+
+    if entity_type == "progress_payment" and entity_id:
+        payment = ProgressPayment.query.get(entity_id)
+        if payment:
+            works = progress_payment_works_label(payment)
+            source = "مستخلص باطن" if payment.subcontractor_id else "مستخلص عميل"
+            deduction = any(token in title for token in ("استقطاع", "خصم", "غرامات", "تأمينات محتجزة", "ضرائب مخصومة"))
+            if works and not deduction:
+                detail = f"البند: {works}"
+                title = f"مستخلص {payment.document_number} — {works}"
+                items = list(payment.items or [])
+                if len(items) == 1:
+                    qty = as_float(items[0].quantity)
+                    qty_label = _quantity_label(qty, items[0].unit)
+                elif items:
+                    qty_label = f"{len(items)} بنود"
+            elif deduction:
+                title = f"مستخلص {payment.document_number} — {title}"
+    elif entity_type == "purchase_order" and entity_id:
+        order = PurchaseOrder.query.get(entity_id)
+        if order:
+            items = purchase_order_items_label(order)
+            source = "أمر شراء"
+            if items:
+                detail = f"الصنف: {items}"
+                title = f"أمر شراء {order.document_number} — {items}"
+            rows = list(order.line_items or [])
+            if len(rows) == 1:
+                qty = as_float(rows[0].quantity)
+                qty_label = _quantity_label(qty, rows[0].unit)
+            elif not rows and as_float(order.quantity):
+                qty = as_float(order.quantity)
+                qty_label = _quantity_label(qty)
+            elif rows:
+                qty_label = f"{len(rows)} أصناف"
+    elif entity_type == "inventory" and entity_id:
+        stock_tx = InventoryTransaction.query.get(entity_id)
+        if stock_tx and not is_monetary_account_transfer(stock_tx):
+            qty = as_float(stock_tx.quantity)
+            qty_label = _quantity_label(qty, stock_tx.unit)
+            material = (stock_tx.material_name or "").strip()
+            kind = inventory_type_label(stock_tx.transaction_type)
+            title = title or f"{kind} {material}".strip()
+            if material and material not in title:
+                detail = f"الصنف: {material}"
+        source = "مخزون"
+    elif entity_type == "supplier_payment":
+        source = "سداد مورد"
+    elif entity_type == "subcontractor_payment":
+        source = "دفعة مقاول"
+    elif entity_type == "payroll_slip":
+        source = "كشف مرتبات"
+    elif entity_type == "employee_salary_payment":
+        source = "صرف مرتب"
+
+    description = title or raw or "-"
+    if detail and detail.split(":", 1)[-1].strip() and detail.split(":", 1)[-1].strip() not in description:
+        description = f"{description} — {detail}"
+    return {
+        "title": title or raw or "-",
+        "detail": detail,
+        "description": description,
+        "quantity": round(qty, 2) if qty else 0,
+        "quantity_label": qty_label or "-",
+        "source": source,
+    }
+
+
+def build_account_statement(account, from_date=None, to_date=None, posted_only=True):
+    """كشف حساب لأي حساب في الدليل: افتتاحي + حركة الفترة + رصيد جارٍ."""
+    from_date = (from_date or "").strip() or None
+    to_date = (to_date or "").strip() or None
+    chart_opening = as_float(getattr(account, "opening_balance", 0))
+
+    query = JournalEntry.query.filter(
+        (JournalEntry.debit_account_id == account.id) | (JournalEntry.credit_account_id == account.id)
+    )
+    if posted_only:
+        query = query.filter(JournalEntry.status == "مرحل")
+    entries = query.order_by(JournalEntry.date.asc(), JournalEntry.id.asc()).all()
+    hidden = hidden_account_ids_for_query()
+
+    prior_debit = 0.0
+    prior_credit = 0.0
+    period_debit = 0.0
+    period_credit = 0.0
+    movements = []
+
+    for entry in entries:
+        amount = as_float(entry.amount)
+        debit = amount if entry.debit_account_id == account.id else 0.0
+        credit = amount if entry.credit_account_id == account.id else 0.0
+        entry_date = entry.date or ""
+        if from_date and entry_date and entry_date < from_date:
+            prior_debit += debit
+            prior_credit += credit
+            continue
+        if to_date and entry_date and entry_date > to_date:
+            continue
+
+        period_debit += debit
+        period_credit += credit
+        counter = entry.credit_account if entry.debit_account_id == account.id else entry.debit_account
+        counter_hidden = bool(counter and _account_is_hidden(counter.id, hidden))
+        narration = statement_narration(entry)
+        movements.append(
+            {
+                "date": entry.date,
+                "entry_id": None if counter_hidden else entry.id,
+                "reference": entry.reference or entry.display_number,
+                "description": narration["description"],
+                "detail": narration["detail"],
+                "title": narration["title"],
+                "source": narration["source"],
+                "project": entry.project.display_name if entry.project else "-",
+                "counter_account": counter_account_display(counter, hidden),
+                "user_name": entry.updated_by_name or entry.created_by_name or "-",
+                "quantity": narration["quantity"],
+                "quantity_label": narration["quantity_label"],
+                "debit": round(debit, 2),
+                "credit": round(credit, 2),
+                "status": entry.status,
+            }
+        )
+
+    opening_balance = chart_opening + prior_debit - prior_credit
+    running = opening_balance
+    for row in movements:
+        running = running + row["debit"] - row["credit"]
+        display, side = _signed_balance_parts(running)
+        row["running_balance"] = round(running, 2)
+        row["running_display"] = display
+        row["running_side"] = side
+
+    closing_balance = opening_balance + period_debit - period_credit
+    opening_display, opening_side = _signed_balance_parts(opening_balance)
+    closing_display, closing_side = _signed_balance_parts(closing_balance)
+
+    return {
+        "account": account,
+        "nature": account_nature(account),
+        "from_date": from_date or "",
+        "to_date": to_date or "",
+        "chart_opening": round(chart_opening, 2),
+        "opening_balance": round(opening_balance, 2),
+        "opening_display": opening_display,
+        "opening_side": opening_side,
+        "period_debit": round(period_debit, 2),
+        "period_credit": round(period_credit, 2),
+        "closing_balance": round(closing_balance, 2),
+        "closing_display": closing_display,
+        "closing_side": closing_side,
+        "movements": movements,
+    }
+
+
+def get_age_bucket(entry_date):
+    if not entry_date:
+        return "current"
+    try:
+        age_days = (date.today() - date.fromisoformat(entry_date)).days
+    except ValueError:
+        return "current"
+
+    if age_days <= 30:
+        return "current"
+    if age_days <= 60:
+        return "30"
+    if age_days <= 90:
+        return "60"
+    return "90"
+
+
+def get_custody_owner_type(account):
+    """يحدد نوع صاحب العهدة من الحساب: سائق / مندوب / معدة."""
+    code = (account.code or "").strip().upper()
+    name = (account.name or "").strip()
+    category = (account.category or "").strip()
+    if code.startswith("DRV-") or "سائق" in name or category == "السواقين":
+        return "سائق"
+    if code.startswith("REP-") or "مندوب" in name or category == "المناديب":
+        return "مندوب"
+    if code.startswith("EQP-") or "معدة" in name or "معدات" in name or category == "المعدات":
+        return "معدة"
+    return ""
+
+
+def get_custody_entity_accounts(accounts):
+    selected = []
+    seen_ids = set()
+
+    for account in accounts:
+        code = (account.code or "").strip().upper()
+        if code.startswith("CAT-"):
+            continue
+        if get_custody_owner_type(account) and account.id not in seen_ids:
+            selected.append(account)
+            seen_ids.add(account.id)
+
+    selected.sort(key=lambda item: ((item.category or ""), (item.code or ""), (item.name or "")))
+    return selected
+
+
+def get_or_create_custody_expense_account(expense_item):
+    item_name = (expense_item or "").strip()
+    if not item_name:
+        return None
+
+    account_name = f"مصروف عهدة - {item_name}"
+    existing = ChartOfAccount.query.filter_by(name=account_name, category="المصروفات").first()
+    if existing:
+        return existing
+
+    used_codes = {account.code for account in ChartOfAccount.query.with_entities(ChartOfAccount.code).all()}
+    account_code = get_next_prefixed_code("EXP-CUST", used_codes)
+    account = ChartOfAccount(code=account_code, name=account_name, category="المصروفات")
+    db.session.add(account)
+    db.session.flush()
+    return account
+
+
+def get_or_create_driver_account(driver_name):
+    clean_name = (driver_name or "").strip()
+    if not clean_name:
+        return None
+    account_name = f"سائق - {clean_name}"
+    existing = ChartOfAccount.query.filter_by(name=account_name, category="السواقين").first()
+    if existing:
+        return existing
+
+    used_codes = {account.code for account in ChartOfAccount.query.with_entities(ChartOfAccount.code).all()}
+    account = ChartOfAccount(
+        code=get_next_prefixed_code("DRV", used_codes),
+        name=account_name,
+        category="السواقين",
+    )
+    db.session.add(account)
+    db.session.flush()
+    return account
+
+
+def get_or_create_representative_account(representative_name):
+    clean_name = (representative_name or "").strip()
+    if not clean_name:
+        return None
+    account_name = f"مندوب - {clean_name}"
+    existing = ChartOfAccount.query.filter_by(name=account_name, category="المناديب").first()
+    if existing:
+        return existing
+
+    used_codes = {account.code for account in ChartOfAccount.query.with_entities(ChartOfAccount.code).all()}
+    account = ChartOfAccount(
+        code=get_next_prefixed_code("REP", used_codes),
+        name=account_name,
+        category="المناديب",
+    )
+    db.session.add(account)
+    db.session.flush()
+    return account
+
+
+def get_or_create_custody_owner_account(owner_type, owner_name):
+    clean_type = (owner_type or "").strip()
+    if clean_type == "مندوب":
+        return get_or_create_representative_account(owner_name)
+    if clean_type == "معدة":
+        clean_name = (owner_name or "").strip()
+        if not clean_name:
+            return None
+        account_name = f"معدات - {clean_name}"
+        existing = ChartOfAccount.query.filter_by(name=account_name, category="المعدات").first()
+        if existing:
+            return existing
+        used_codes = {account.code for account in ChartOfAccount.query.with_entities(ChartOfAccount.code).all()}
+        account = ChartOfAccount(
+            code=get_next_prefixed_code("EQP", used_codes),
+            name=account_name,
+            category="المعدات",
+        )
+        db.session.add(account)
+        db.session.flush()
+        return account
+    return get_or_create_driver_account(owner_name)
+
+
+_NAME_FOLDS = str.maketrans({"ى": "ي", "أ": "ا", "إ": "ا", "آ": "ا", "ة": "ه"})
+PARTY_NAME_PREFIXES = {
+    "مقاولي الباطن": "مقاول باطن - ",
+    "الموردين": "مورد - ",
+    "موردين": "مورد - ",
+    "العملاء": "عميل - ",
+    "الموظفين": "موظف - ",
+    "السواقين": "سائق - ",
+    "المناديب": "مندوب - ",
+    "المعدات": "معدات - ",
+    "المشاريع": "مشروع - ",
+    "المخازن": "مخزن - ",
+}
+PARTY_CATEGORY_ALIASES = {
+    "الموردين": ("الموردين", "موردين"),
+    "موردين": ("الموردين", "موردين"),
+}
+_SYSTEM_CODE_PREFIXES = ("CAT-", "LIB-", "EXP-", "REV-", "RET-", "TAX-", "INV-", "TRS-")
+
+
+def _folded_name(value):
+    return " ".join((value or "").split()).translate(_NAME_FOLDS).casefold()
+
+
+def person_name_keys(value):
+    text = " ".join((value or "").split())
+    keys = set()
+    folded = _folded_name(text)
+    if folded:
+        keys.add(folded)
+    if text.endswith(")") and " (" in text:
+        extra = _folded_name(text.rsplit(" (", 1)[0])
+        if extra:
+            keys.add(extra)
+    return keys
+
+
+def names_match(left, right):
+    return bool(person_name_keys(left) & person_name_keys(right))
+
+
+def is_system_chart_account(account):
+    code = (getattr(account, "code", None) or "").strip().upper()
+    return any(code.startswith(prefix) for prefix in _SYSTEM_CODE_PREFIXES)
+
+
+def party_categories(category):
+    raw = (category or "").strip()
+    return PARTY_CATEGORY_ALIASES.get(raw, (raw,))
+
+
+def stripped_party_name(account):
+    if not account or is_system_chart_account(account):
+        return ""
+    category = (account.category or "").strip()
+    name = " ".join((account.name or "").split())
+    prefix = PARTY_NAME_PREFIXES.get(category, "")
+    if prefix and name.startswith(prefix):
+        name = name[len(prefix):].strip()
+    if not name or _folded_name(name) == _folded_name(category):
+        return ""
+    if "أرصدة دائنة" in name:
+        return ""
+    return name
+
+
+def personal_name_key(value):
+    """مفتاح الاسم الثنائي أو الثلاثي أو الرباعي بعد حذف لقب النوع والوسم."""
+    text = " ".join((value or "").split())
+    for prefix in PARTY_NAME_PREFIXES.values():
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+            break
+    if text.endswith(")") and " (" in text:
+        text = text.rsplit(" (", 1)[0].strip()
+    folded = _folded_name(text)
+    parts = [part for part in folded.split() if part]
+    if len(parts) not in (2, 3, 4):
+        return ""
+    return " ".join(parts)
+
+
+def _identity_rows():
+    return (
+        (Subcontractor, "name", "مقاولي الباطن"),
+        (Supplier, "name", "الموردين"),
+        (Employee, "name", "الموظفين"),
+        (Equipment, "name", "المعدات"),
+        (Project, "project_name", "المشاريع"),
+    )
+
+
+def find_registered_name(name, exclude_account_id=None, exclude_model=None, exclude_id=None):
+    key = personal_name_key(name)
+    if not key:
+        return None
+    for account in ChartOfAccount.query.order_by(ChartOfAccount.id).all():
+        if exclude_account_id and account.id == exclude_account_id:
+            continue
+        if is_system_chart_account(account):
+            continue
+        if personal_name_key(stripped_party_name(account)) != key:
+            continue
+        return {"name": stripped_party_name(account), "code": account.code or "", "where": account.category or "الحسابات"}
+    for model, field_name, where in _identity_rows():
+        for row in model.query.order_by(model.id).all():
+            if exclude_model is model and exclude_id and row.id == exclude_id:
+                continue
+            if personal_name_key(getattr(row, field_name, "")) != key:
+                continue
+            return {"name": getattr(row, field_name, ""), "code": getattr(row, "code", "") or "", "where": where}
+    return None
+
+
+def find_registered_code(code, exclude_account_id=None, exclude_model=None, exclude_id=None):
+    raw = (code or "").strip()
+    if not raw:
+        return None
+    needle = raw.casefold()
+    linked_key = ""
+    if exclude_account_id:
+        own_account = ChartOfAccount.query.get(exclude_account_id)
+        if own_account:
+            linked_key = personal_name_key(stripped_party_name(own_account))
+    for account in ChartOfAccount.query.order_by(ChartOfAccount.id).all():
+        if exclude_account_id and account.id == exclude_account_id:
+            continue
+        if (account.code or "").strip().casefold() == needle:
+            return {"name": account.name, "code": account.code, "where": "الحسابات"}
+    for model, field_name, where in _identity_rows():
+        for row in model.query.order_by(model.id).all():
+            if exclude_model is model and exclude_id and row.id == exclude_id:
+                continue
+            if linked_key and personal_name_key(getattr(row, field_name, "")) == linked_key:
+                continue
+            if (getattr(row, "code", "") or "").strip().casefold() != needle:
+                continue
+            return {"name": getattr(row, field_name, ""), "code": row.code, "where": where}
+    return None
+
+
+def registration_block_message(name, code="", old_name="", exclude_account_id=None, exclude_model=None, exclude_id=None):
+    """يرفض الاسم المكرر ثنائيًا أو ثلاثيًا أو رباعيًا، والكود المستخدم على حساب آخر."""
+    new_key = personal_name_key(name)
+    old_key = personal_name_key(old_name)
+    if new_key and new_key != old_key:
+        found = find_registered_name(name, exclude_account_id, exclude_model, exclude_id)
+        if found:
+            place = f" في {found['where']}" if found.get("where") else ""
+            coded = f" بالكود {found['code']}" if found.get("code") else ""
+            return f"الاسم {found['name']} مسجّل بالفعل{place}{coded}، ومش هيتسجل تاني."
+    raw_code = (code or "").strip()
+    if raw_code:
+        found = find_registered_code(raw_code, exclude_account_id, exclude_model, exclude_id)
+        if found:
+            return f"الكود {raw_code} مسجّل على {found['name']}. كل حساب له كود واحد، ومفيش تكرار للكود."
+    return ""
+
+
+def find_account_by_person(category, person_name):
+    wanted = person_name_keys(person_name)
+    if not wanted:
+        return None
+    rows = ChartOfAccount.query.filter(ChartOfAccount.category.in_(party_categories(category))).all()
+    for account in rows:
+        label = stripped_party_name(account)
+        if person_name_keys(label) & wanted:
+            return account
+    return None
+
+
+def _other_named_row(model, field_name, label, current_id):
+    wanted = person_name_keys(label)
+    if not wanted:
+        return False
+    for row in model.query.all():
+        if current_id and row.id == current_id:
+            continue
+        if person_name_keys(getattr(row, field_name, "")) & wanted:
+            return True
+    return False
+
+
+def ensure_party_account(canonical_code, person_name, category, display_name, name_taken):
+    """يرجع حساب الشخص. لو كود SUB/SUP-{id} محجوز لاسم مختلف لا يُستبدل، ويتعمل حساب جديد."""
+    person_name = " ".join((person_name or "").split())
+    if not person_name:
+        return None, False
+    found = find_account_by_person(category, person_name)
+    changed = False
+    if found:
+        if (found.name or "") != display_name or (found.category or "") != category:
+            found.name = display_name
+            found.category = category
+            changed = True
+        return found, changed
+    by_code = get_account_by_code(canonical_code) if canonical_code else None
+    if by_code and not is_system_chart_account(by_code):
+        label = stripped_party_name(by_code) or " ".join((by_code.name or "").split())
+        if not label or names_match(label, person_name) or not name_taken(label):
+            if (by_code.name or "") != display_name or (by_code.category or "") != category:
+                by_code.name = display_name
+                by_code.category = category
+                changed = True
+            return by_code, changed
+    code = canonical_code if by_code is None else next_account_code(category)
+    account = ChartOfAccount(code=code, name=display_name, category=category)
+    db.session.add(account)
+    db.session.flush()
+    return account, True
+
+
+def _rows_named(model, field_name, label):
+    wanted = person_name_keys(label)
+    if not wanted:
+        return []
+    return [
+        row for row in model.query.all()
+        if person_name_keys(getattr(row, field_name, "")) & wanted
+    ]
+
+
+def _accounts_named(category, label):
+    wanted = person_name_keys(label)
+    if not wanted:
+        return []
+    return [
+        account for account in ChartOfAccount.query.filter(
+            ChartOfAccount.category.in_(party_categories(category))
+        ).all()
+        if person_name_keys(stripped_party_name(account)) & wanted
+    ]
+
+
+def _code_used_by_other(model, code, current_id):
+    raw = (code or "").strip().casefold()
+    if not raw:
+        return False
+    for other in model.query.all():
+        if current_id and other.id == current_id:
+            continue
+        if (getattr(other, "code", None) or "").strip().casefold() == raw:
+            return True
+    return False
+
+
+def adopt_chart_code(row, category, label, model, field_name, requested_code=None):
+    """كود شاشة النوع يبقى هو كود الحساب في الشجرة. الاسم المكرر لا يُمس."""
+    if row is None or len(_rows_named(model, field_name, label)) != 1:
+        return "skipped"
+    accounts = _accounts_named(category, label)
+    if len(accounts) != 1:
+        return "skipped"
+    account = accounts[0]
+    code = (account.code or "").strip()
+    if not code:
+        return "skipped"
+    requested = " ".join((requested_code or "").split())
+    if requested and requested != code:
+        if account_code_taken(requested, exclude_id=account.id) or _code_used_by_other(model, requested, row.id):
+            if (row.code or "") != code and not _code_used_by_other(model, code, row.id):
+                row.code = code
+            return "rejected"
+        account.code = requested
+        code = requested
+    if (row.code or "") != code:
+        if _code_used_by_other(model, code, row.id):
+            return "skipped"
+        row.code = code
+        return "updated"
+    return "updated" if requested else "unchanged"
+
+
+def _find_named_model(model, field_name, label):
+    wanted = person_name_keys(label)
+    if not wanted:
+        return None
+    for row in model.query.all():
+        if person_name_keys(getattr(row, field_name, "")) & wanted:
+            return row
+    return None
+
+
+def rename_linked_party(previous_name, previous_category, new_name, new_category):
+    """لو الاسم اتغير جوه نفس النوع، السجل في شاشة النوع يتغير معاه. المكرر ما يتلمّسش."""
+    if (previous_category or "").strip() != (new_category or "").strip():
+        return False
+    old_probe = ChartOfAccount(code="X-1", name=previous_name, category=previous_category)
+    new_probe = ChartOfAccount(code="X-1", name=new_name, category=new_category)
+    old_label = stripped_party_name(old_probe)
+    new_label = stripped_party_name(new_probe)
+    if not old_label or not new_label or names_match(old_label, new_label):
+        return False
+    mapping = {
+        "مقاولي الباطن": (Subcontractor, "name"),
+        "الموردين": (Supplier, "name"),
+        "موردين": (Supplier, "name"),
+        "الموظفين": (Employee, "name"),
+        "المعدات": (Equipment, "name"),
+        "المشاريع": (Project, "project_name"),
+    }
+    pair = mapping.get((new_category or "").strip())
+    if not pair:
+        return False
+    model, field_name = pair
+    wanted = person_name_keys(old_label)
+    matches = [
+        row for row in model.query.all()
+        if person_name_keys(getattr(row, field_name, "")) & wanted
+    ]
+    if len(matches) != 1:
+        return False
+    setattr(matches[0], field_name, new_label)
+    return True
+
+
+def ensure_operational_parties():
+    """حساب بنوع تشغيلي من غير سجل في شاشته يتنشأ هناك، من غير ما يمسح المكرر."""
+    changed = False
+    for account in ChartOfAccount.query.order_by(ChartOfAccount.id).all():
+        label = stripped_party_name(account)
+        if not label:
+            continue
+        category = (account.category or "").strip()
+        if category == "مقاولي الباطن":
+            if _find_named_model(Subcontractor, "name", label):
+                continue
+            item = Subcontractor(name=label, code=(account.code or None))
+            db.session.add(item)
+            db.session.flush()
+            changed = True
+        elif category in {"الموردين", "موردين"}:
+            if _find_named_model(Supplier, "name", label):
+                continue
+            item = Supplier(name=label, code=(account.code or None))
+            db.session.add(item)
+            db.session.flush()
+            changed = True
+        elif category == "الموظفين":
+            if _find_named_model(Employee, "name", label):
+                continue
+            item = Employee(
+                name=label,
+                code=(account.code or None) or next_employee_code(),
+                tag="موظف",
+                job_title="موظف",
+                is_active=True,
+            )
+            db.session.add(item)
+            db.session.flush()
+            changed = True
+        elif category == "المعدات":
+            if _find_named_model(Equipment, "name", label):
+                continue
+            db.session.add(Equipment(name=label, code=(account.code or None)))
+            db.session.flush()
+            changed = True
+        elif category == "المشاريع":
+            if _find_named_model(Project, "project_name", label):
+                continue
+            codes = [row.code for row in Project.query.with_entities(Project.code).all() if row.code]
+            project_code = (account.code or "").strip()
+            if not project_code or _code_used_by_other(Project, project_code, None):
+                project_code = next_sequential_code("PRJ", codes)
+            db.session.add(Project(
+                code=project_code,
+                project_name=label,
+                client_name="",
+                contract_type="مقطوعية",
+                contract_value=0,
+            ))
+            db.session.flush()
+            changed = True
+    return changed
+
+
+def get_or_create_subcontractor_account(subcontractor):
+    if not subcontractor:
+        return None
+    account, _changed = ensure_party_account(
+        f"SUB-{subcontractor.id:04d}",
+        subcontractor.name,
+        "مقاولي الباطن",
+        f"مقاول باطن - {subcontractor.name}",
+        lambda label, current_id=subcontractor.id: _other_named_row(Subcontractor, "name", label, current_id),
+    )
+    return account
+
+
+def get_or_create_supplier_account(supplier):
+    if not supplier:
+        return None
+    account, _changed = ensure_party_account(
+        f"SUP-{supplier.id:04d}",
+        supplier.name,
+        "الموردين",
+        f"مورد - {supplier.name}",
+        lambda label, current_id=supplier.id: _other_named_row(Supplier, "name", label, current_id),
+    )
+    return account
+
+
+def _emp_account_code_id(code):
+    raw = (code or "").strip().upper()
+    if raw.startswith("CAT-") or not raw.startswith("EMP-"):
+        return None
+    tail = raw.split("-", 1)[1]
+    return as_int(tail) if tail.isdigit() else None
+
+
+def _employee_account_name_keys(employee):
+    keys = set()
+    for label in (employee.display_name, employee.name):
+        text = (label or "").strip()
+        if not text:
+            continue
+        keys.add(text)
+        keys.add(f"موظف - {text}")
+    return keys
+
+
+def find_employee_accounts(employee):
+    if not employee:
+        return []
+    name_keys = _employee_account_name_keys(employee)
+    found = []
+    seen = set()
+    rows = ChartOfAccount.query.filter(
+        (ChartOfAccount.category == "الموظفين") | (ChartOfAccount.code.ilike("EMP-%"))
+    ).all()
+    for account in rows:
+        code = (account.code or "").strip().upper()
+        if code.startswith("CAT-"):
+            continue
+        name = (account.name or "").strip()
+        if _emp_account_code_id(account.code) == employee.id or name in name_keys:
+            if account.id not in seen:
+                seen.add(account.id)
+                found.append(account)
+    return found
+
+
+def _account_journal_count(account_id):
+    if not account_id:
+        return 0
+    return JournalEntry.query.filter(
+        (JournalEntry.debit_account_id == account_id) | (JournalEntry.credit_account_id == account_id)
+    ).count()
+
+
+def _repoint_account_refs(from_id, to_id):
+    if not from_id or not to_id or from_id == to_id:
+        return
+    for entry in JournalEntry.query.filter(
+        (JournalEntry.debit_account_id == from_id) | (JournalEntry.credit_account_id == from_id)
+    ).all():
+        if entry.debit_account_id == from_id:
+            entry.debit_account_id = to_id
+        if entry.credit_account_id == from_id:
+            entry.credit_account_id = to_id
+    for model, field in (
+        (CustodySettlement, "treasury_account_id"),
+        (CustodySettlement, "entity_account_id"),
+        (ClientReceipt, "treasury_account_id"),
+        (SupplierPayment, "treasury_account_id"),
+        (EmployeeSalaryPayment, "treasury_account_id"),
+        (SubcontractorPayment, "treasury_account_id"),
+    ):
+        if not hasattr(model, field):
+            continue
+        for row in model.query.filter_by(**{field: from_id}).all():
+            setattr(row, field, to_id)
+
+
+def resolve_employee_account(employee):
+    """يرجع حساب الموظف الفعلي حتى لو الكود القديم مختلف عن EMP-{id}."""
+    if not employee:
+        return None, False
+    expected_name = f"موظف - {employee.display_name}"
+    canonical = f"EMP-{employee.id:04d}"
+    accounts = find_employee_accounts(employee)
+    changed = False
+    if accounts:
+        accounts.sort(
+            key=lambda item: (
+                _account_journal_count(item.id),
+                1 if (item.code or "").upper() == canonical else 0,
+                item.id,
+            ),
+            reverse=True,
+        )
+        chosen = accounts[0]
+        if (chosen.name or "") != expected_name:
+            chosen.name = expected_name
+            changed = True
+        if (chosen.category or "").strip() != "الموظفين":
+            chosen.category = "الموظفين"
+            changed = True
+        return chosen, changed
+
+    account = ChartOfAccount(code=canonical, name=expected_name, category="الموظفين")
+    db.session.add(account)
+    db.session.flush()
+    return account, True
+
+
+def get_or_create_employee_account(employee):
+    account, _changed = resolve_employee_account(employee)
+    return account
+
+
+def employee_from_account(account):
+    if not account:
+        return None
+    code = (account.code or "").strip()
+    if code.upper().startswith("EMP-"):
+        emp_id = as_int(code.split("-", 1)[1])
+        if emp_id:
+            found = Employee.query.get(emp_id)
+            if found:
+                return found
+    label = (account.name or "").strip()
+    if label.startswith("موظف - "):
+        label = label[7:].strip()
+    if not label:
+        return None
+    for employee in Employee.query.all():
+        if employee.name == label or employee.display_name == label:
+            return employee
+    return None
+
+
+def _delete_journals_for_account(account_id):
+    if not account_id:
+        return
+    journals = JournalEntry.query.filter(
+        (JournalEntry.debit_account_id == account_id) | (JournalEntry.credit_account_id == account_id)
+    ).all()
+    for journal in journals:
+        db.session.delete(journal)
+
+
+def purge_employee_party(employee):
+    """يحذف الموظف وحضوره ومرتباته وصرف المرتب وعهده وقيوده وحسابه معًا."""
+    if not employee:
+        return None
+    for slip in PayrollSlip.query.filter_by(employee_id=employee.id).all():
+        DocumentAttachment.query.filter_by(entity_type="payroll_slip", entity_id=slip.id).delete(synchronize_session=False)
+        void_document_journals("payroll_slip", slip.id, commit=False, check_period=False)
+        db.session.delete(slip)
+    for payment in EmployeeSalaryPayment.query.filter_by(employee_id=employee.id).all():
+        DocumentAttachment.query.filter_by(entity_type="employee_salary_payment", entity_id=payment.id).delete(synchronize_session=False)
+        void_document_journals("employee_salary_payment", payment.id, commit=False, check_period=False)
+        db.session.delete(payment)
+    EmployeeAttendance.query.filter_by(employee_id=employee.id).delete(synchronize_session=False)
+    accounts = find_employee_accounts(employee)
+    if not accounts:
+        fallback = get_account_by_code(f"EMP-{employee.id:04d}")
+        accounts = [fallback] if fallback else []
+    for account in accounts:
+        for settlement in CustodySettlement.query.filter(
+            (CustodySettlement.treasury_account_id == account.id)
+            | (CustodySettlement.entity_account_id == account.id)
+        ).all():
+            DocumentAttachment.query.filter_by(entity_type="custody", entity_id=settlement.id).delete(synchronize_session=False)
+            void_document_journals("custody", settlement.id, commit=False, check_period=False)
+            db.session.delete(settlement)
+        _delete_journals_for_account(account.id)
+        db.session.delete(account)
+    db.session.delete(employee)
+    db.session.flush()
+    return employee
+
+
+def normalize_client_name(value):
+    return " ".join((value or "").split())
+
+
+def canonical_client_name(value, known_names=None):
+    """يعيد الاسم المسجّل إن وُجد بنفس الأحرف بعد توحيد المسافات."""
+    clean = normalize_client_name(value)
+    if not clean:
+        return ""
+    names = known_names if known_names is not None else list_client_names()
+    clean_folded = clean.casefold()
+    for name in names:
+        if normalize_client_name(name).casefold() == clean_folded:
+            return name
+    return clean
+
+
+def resolve_client_name(form):
+    """يفضّل حقل العميل الجديد إن وُجد، وإلا الاختيار من القائمة، مع منع التكرار الإملائي."""
+    return canonical_client_name(
+        form.get("client_name_new") or form.get("client_name")
+    )
+
+
+def get_or_create_client_account(client_name):
+    existing = find_client_account(client_name)
+    if existing:
+        return existing
+    clean_name = canonical_client_name(client_name)
+    if not clean_name:
+        return None
+    if find_registered_name(clean_name):
+        return None
+    used_codes = {account.code for account in ChartOfAccount.query.with_entities(ChartOfAccount.code).all()}
+    account = ChartOfAccount(
+        code=get_next_prefixed_code("CLI", used_codes),
+        name=f"عميل - {clean_name}",
+        category="العملاء",
+    )
+    db.session.add(account)
+    db.session.flush()
+    return account
+
+
+def apply_client_to_project(project, client_name):
+    """يربط العميل بالمشروع وينشئ حسابه في الشجرة إن لم يكن موجودًا."""
+    clean_name = canonical_client_name(client_name)
+    if not project or not clean_name:
+        return None
+    if (project.client_name or "").strip() != clean_name:
+        project.client_name = clean_name
+    account = get_or_create_client_account(clean_name)
+    get_or_create_project_account(project)
+    return account
+
+
+def get_or_create_project_account(project):
+    if not project:
+        return None
+    code = f"PRJ-{project.id:04d}"
+    account = get_account_by_code(code)
+    if account:
+        return account
+    account = ChartOfAccount(
+        code=code,
+        name=f"مشروع - {project.display_name}",
+        category="المشاريع",
+    )
+    db.session.add(account)
+    db.session.flush()
+    return account
+
+
+def is_auto_journal_entry(entry):
+    """القيود التلقائية تُدار من مستنداتها (مستخلص/مقايسة/عهدة) ولا تُعدَّل يدويًا."""
+    return bool(entry) and entry.is_auto
+
+
+def find_closed_period(entry_date):
+    """يعيد الفترة المغلقة التي يقع فيها التاريخ، أو None."""
+    if not entry_date:
+        return None
+    for period in AccountingPeriod.query.filter_by(status="مغلقة").all():
+        if (period.from_date or "") <= entry_date <= (period.to_date or ""):
+            return period
+    return None
+
+
+class PeriodClosedError(Exception):
+    def __init__(self, period):
+        self.period = period
+        super().__init__(
+            f"الفترة المحاسبية «{period.name}» من {period.from_date} إلى {period.to_date} مغلقة"
+        )
+
+
+def assert_period_open(entry_date):
+    period = find_closed_period(entry_date)
+    if period:
+        raise PeriodClosedError(period)
+
+
+def _auto_journal_payloads_to_apply(payloads):
+    applied = []
+    for payload in payloads or []:
+        if as_float(payload.get("amount")) <= 0:
+            continue
+        if not payload.get("debit_account_id") or not payload.get("credit_account_id"):
+            continue
+        if payload["debit_account_id"] == payload["credit_account_id"]:
+            continue
+        applied.append(payload)
+    return applied
+
+
+def _auto_journal_key(debit_id, credit_id, amount, description, entry_date, status):
+    return (
+        int(debit_id or 0),
+        int(credit_id or 0),
+        round(as_float(amount), 2),
+        (description or "").strip(),
+        (entry_date or ""),
+        (status or ""),
+    )
+
+
+def _auto_journals_match(existing, payloads):
+    applied = _auto_journal_payloads_to_apply(payloads)
+    if len(existing) != len(applied):
+        return False
+    existing_keys = sorted(
+        _auto_journal_key(item.debit_account_id, item.credit_account_id, item.amount, item.description, item.date, item.status)
+        for item in existing
+    )
+    new_keys = sorted(
+        _auto_journal_key(
+            payload.get("debit_account_id"),
+            payload.get("credit_account_id"),
+            payload.get("amount"),
+            payload.get("description"),
+            payload.get("date"),
+            payload.get("status"),
+        )
+        for payload in applied
+    )
+    return existing_keys == new_keys
+
+
+def _journal_ids_with_reversals(entries):
+    ids = {item.id for item in entries if getattr(item, "id", None)}
+    if not ids:
+        return set()
+    reversal_ids = {
+        row[0]
+        for row in db.session.query(JournalEntry.id).filter(JournalEntry.reversal_of_id.in_(ids)).all()
+        if row[0]
+    }
+    legacy_refs = [f"REV-{item_id:06d}" for item_id in ids]
+    legacy_ids = {
+        row[0]
+        for row in db.session.query(JournalEntry.id).filter(JournalEntry.reference.in_(legacy_refs)).all()
+        if row[0]
+    }
+    return ids | reversal_ids | legacy_ids
+
+
+def _delete_journal_ids(ids):
+    if not ids:
+        return 0
+    db.session.flush()
+    deleted = JournalEntry.query.filter(JournalEntry.id.in_(ids)).delete(synchronize_session=False)
+    db.session.expire_all()
+    return deleted or 0
+
+
+def replace_auto_journals(marker, payloads, commit=True, check_period=True):
+    """يمسح القيد التلقائي المرتبط بالمستند ولا ينشئ غيره. المستند نفسه يفضل في شاشته."""
+    del payloads, check_period
+    existing = JournalEntry.query.filter(JournalEntry.description.like(f"%{marker}%")).all()
+    _delete_journal_ids(_journal_ids_with_reversals(existing))
+    if commit:
+        db.session.commit()
+
+
+def purge_automatic_journals(commit=True):
+    """يمسح كل قيد كتبه النظام لوحده، والقيد العكسي اللي كان بيظبط أثره. القيود اليدوية تفضل."""
+    existing = JournalEntry.query.filter(JournalEntry.description.like("%-AUTO:%")).all()
+    deleted = _delete_journal_ids(_journal_ids_with_reversals(existing))
+    if commit and deleted:
+        db.session.commit()
+    return deleted
+
+
+def get_or_create_drivers_expense_account():
+    account = ChartOfAccount.query.filter_by(code="EXP-DRV").first()
+    if account:
+        return account
+
+    ensure_chart_account("EXP-DRV", "مصروفات السواقين", "المصروفات")
+    account = ChartOfAccount.query.filter_by(code="EXP-DRV").first()
+    if account:
+        return account
+
+    fallback = ChartOfAccount(code="EXP-DRV", name="مصروفات السواقين", category="المصروفات")
+    db.session.add(fallback)
+    db.session.flush()
+    return fallback
+
+
+def sync_driver_compensation_journals(entry):
+    """شيت السائق يفضل في شاشته، وحساب السائق يتنشأ في الشجرة. من غير قيد يومية تلقائي."""
+    if hasattr(entry, "recalculate"):
+        entry.recalculate()
+    get_or_create_driver_account(entry.driver_name)
+    for marker in (
+        f"DRV-WORK-AUTO:{entry.id}",
+        f"DRV-DED-AUTO:{entry.id}",
+        f"DRV-PAY-AUTO:{entry.id}",
+    ):
+        replace_auto_journals(marker, [], commit=False)
+    db.session.commit()
+
+
+def get_custody_operation_type(settlement):
+    operation_type = (getattr(settlement, "operation_type", "") or "").strip()
+    if operation_type:
+        return operation_type
+    return ((settlement.voucher_type or "") + " عهدة").strip()
+
+
+def sync_custody_settlement_journal(settlement):
+    """قيود العهد (SRS 3.2 / 3.3).
+
+    صرف عهدة / إعادة تغذية: مدين حساب صاحب العهدة (سلفة) / دائن الخزنة.
+    تسوية عهدة: مدين حسابات المصروفات المعتمدة / دائن حساب صاحب العهدة.
+    رد باقي عهدة: مدين الخزنة / دائن حساب صاحب العهدة.
+    """
+    marker = f"CUST-AUTO:{settlement.id}"
+    amount = get_custody_settlement_amount(settlement)
+    operation_type = get_custody_operation_type(settlement)
+    treasury_id = settlement.treasury_account_id
+    entity_id = settlement.entity_account_id
+    journal_date = settlement.date or date.today().isoformat()
+    journal_reference = settlement.reference or f"CUST-{settlement.id:06d}"
+    project = settlement.project
+    cost_center = f"مشروع - {project.display_name}" if project else None
+    created_entries = []
+
+    if amount <= 0:
+        replace_auto_journals(marker, [])
+        return
+
+    if operation_type == "تسوية عهدة":
+        try:
+            lines = json.loads(settlement.settlement_lines or "[]")
+        except Exception:
+            lines = []
+        if not lines:
+            fallback_account = None
+            if (settlement.expense_item or "").strip():
+                fallback_account = get_or_create_custody_expense_account(settlement.expense_item)
+            if not fallback_account:
+                fallback_account = fallback_custody_expense_account()
+            if fallback_account and amount > 0:
+                lines = [{
+                    "line_no": 1,
+                    "expense_account_id": fallback_account.id,
+                    "amount": amount,
+                    "description": (settlement.expense_item or "").strip() or "تسوية عهدة",
+                    "reference": journal_reference,
+                    "expense_nature": settlement.expense_nature,
+                }]
+
+        for index, line in enumerate(lines, start=1):
+            line_amount = as_float(line.get("amount"))
+            expense_account_id = as_int(line.get("expense_account_id"))
+            if line_amount <= 0 or not expense_account_id:
+                continue
+            line_description = (line.get("description") or "").strip()
+            line_reference = (line.get("reference") or "").strip() or journal_reference
+            line_notes = (line.get("notes") or "").strip()
+            line_nature = (line.get("expense_nature") or "").strip()
+            created_entries.append({
+                "date": journal_date,
+                "reference": line_reference,
+                "journal_name": "متنوع",
+                "status": "مرحل",
+                "description": (
+                    f"{marker}:{index} - تسوية عهدة {settlement.entity_type} {settlement.entity_name or ''}"
+                    + (f" - {line_description}" if line_description else "")
+                    + (f" - {line_nature}" if line_nature else "")
+                    + (f" - ملاحظات: {line_notes}" if line_notes else "")
+                ).strip(),
+                "debit_account_id": expense_account_id,
+                "credit_account_id": entity_id,
+                "amount": round(line_amount, 2),
+                "project_id": settlement.project_id,
+                "cost_center": cost_center,
+            })
+        if not created_entries and amount > 0 and entity_id:
+            fallback_account = fallback_custody_expense_account()
+            if fallback_account:
+                created_entries.append({
+                    "date": journal_date,
+                    "reference": journal_reference,
+                    "journal_name": "متنوع",
+                    "status": "مرحل",
+                    "description": f"{marker} - تسوية عهدة {settlement.entity_type} {settlement.entity_name or ''}".strip(),
+                    "debit_account_id": fallback_account.id,
+                    "credit_account_id": entity_id,
+                    "amount": round(amount, 2),
+                    "project_id": settlement.project_id,
+                    "cost_center": cost_center,
+                })
+    else:
+        if operation_type in CUSTODY_DISBURSE_OPERATIONS or settlement.voucher_type == "صرف":
+            debit_account_id = entity_id
+            credit_account_id = treasury_id
+        else:
+            debit_account_id = treasury_id
+            credit_account_id = entity_id
+
+        description = f"{marker} - {operation_type} {settlement.entity_type} {settlement.entity_name or ''}".strip()
+        if (settlement.expense_item or "").strip():
+            description = f"{description} - بند: {settlement.expense_item.strip()}"
+
+        created_entries.append({
+            "date": journal_date,
+            "reference": journal_reference,
+            "journal_name": "متنوع",
+            "status": "مرحل",
+            "description": description,
+            "debit_account_id": debit_account_id,
+            "credit_account_id": credit_account_id,
+            "amount": round(amount, 2),
+            "project_id": settlement.project_id,
+            "cost_center": cost_center,
+        })
+
+    replace_auto_journals(marker, created_entries)
+
+
+def get_custody_settlement_amount(settlement):
+    """قيمة العملية الفعلية: التسوية تُقاس بمجموع بنودها المعتمدة."""
+    amount = as_float(settlement.amount)
+    if get_custody_operation_type(settlement) == "تسوية عهدة":
+        try:
+            line_items = json.loads(settlement.settlement_lines or "[]")
+        except Exception:
+            line_items = []
+        line_total = sum(as_float(line.get("amount")) for line in line_items)
+        amount = line_total or amount
+    return round(amount, 2)
+
+
+def build_custody_balances(settlements):
+    """تطبيق معادلة SRS 3.2 / 3.3 على كل صاحب عهدة.
+
+    المتبقي من العهدة = إجمالي العهد المنصرفة - (المصروفات المعتمدة + المبالغ المرتجعة)
+    مع تفصيل المصروفات إلى: مصروف نقلة / مصروف يومي / مصروف إداري.
+    """
+    owner_map = defaultdict(lambda: {
+        "entity_type": "",
+        "entity_name": "",
+        "account_id": None,
+        "disbursed": 0.0,
+        "settled_total": 0.0,
+        "settled_trip": 0.0,
+        "settled_daily": 0.0,
+        "settled_admin": 0.0,
+        "returned": 0.0,
+        "remaining": 0.0,
+        "count": 0,
+        "first_date": "",
+        "latest_date": "",
+    })
+
+    for settlement in settlements:
+        entity_name = (settlement.entity_name or "").strip() or "-"
+        key = (settlement.entity_account_id, entity_name)
+        owner = owner_map[key]
+        owner["entity_type"] = (settlement.entity_type or "").strip() or "سائق"
+        owner["entity_name"] = entity_name
+        owner["account_id"] = settlement.entity_account_id
+        owner["count"] += 1
+        owner["latest_date"] = max(owner["latest_date"], settlement.date or "")
+        owner["first_date"] = min(owner["first_date"] or "9999-12-31", settlement.date or "9999-12-31")
+
+        operation_type = get_custody_operation_type(settlement)
+        amount = get_custody_settlement_amount(settlement)
+
+        if operation_type in CUSTODY_DISBURSE_OPERATIONS:
+            owner["disbursed"] += amount
+        elif operation_type == "رد باقي عهدة":
+            owner["returned"] += amount
+        else:
+            owner["settled_total"] += amount
+            try:
+                line_items = json.loads(settlement.settlement_lines or "[]")
+            except Exception:
+                line_items = []
+            if line_items:
+                for line in line_items:
+                    nature = (line.get("expense_nature") or "").strip()
+                    line_amount = as_float(line.get("amount"))
+                    if nature == "مصروف نقلة":
+                        owner["settled_trip"] += line_amount
+                    elif nature == "مصروف يومي":
+                        owner["settled_daily"] += line_amount
+                    elif nature == "مصروف إداري":
+                        owner["settled_admin"] += line_amount
+            else:
+                nature = (settlement.expense_nature or "").strip()
+                if nature == "مصروف نقلة":
+                    owner["settled_trip"] += amount
+                elif nature == "مصروف يومي":
+                    owner["settled_daily"] += amount
+                elif nature == "مصروف إداري":
+                    owner["settled_admin"] += amount
+
+    summaries = []
+    for owner in owner_map.values():
+        owner["remaining"] = round(owner["disbursed"] - (owner["settled_total"] + owner["returned"]), 2)
+        for field in ("disbursed", "settled_total", "settled_trip", "settled_daily", "settled_admin", "returned"):
+            owner[field] = round(owner[field], 2)
+        if owner["first_date"] == "9999-12-31":
+            owner["first_date"] = ""
+        summaries.append(owner)
+
+    summaries.sort(key=lambda row: (row["entity_type"], row["entity_name"]))
+    return summaries
+
+
+def fallback_custody_expense_account():
+    return (
+        get_account_by_code("EXP-OTH")
+        or get_account_by_code("EXP-EQP")
+        or ChartOfAccount.query.filter_by(category="المصروفات").first()
+    )
+
+
+def parse_custody_settlement_lines(form):
+    account_ids = form.getlist("line_account_id")
+    amounts = form.getlist("line_amount")
+    descriptions = form.getlist("line_description")
+    references = form.getlist("line_reference")
+    notes_list = form.getlist("line_notes")
+    natures = form.getlist("line_expense_nature")
+    fallback = fallback_custody_expense_account()
+    lines = []
+    max_len = max(len(account_ids), len(amounts)) if (account_ids or amounts) else 0
+
+    for index in range(max_len):
+        parsed_account_id = as_int(account_ids[index] if index < len(account_ids) else 0)
+        amount = as_float(amounts[index] if index < len(amounts) else 0)
+        description = (descriptions[index] if index < len(descriptions) else "").strip()
+        reference = (references[index] if index < len(references) else "").strip()
+        notes = (notes_list[index] if index < len(notes_list) else "").strip()
+        nature = (natures[index] if index < len(natures) else "").strip()
+        if amount <= 0:
+            continue
+        if not parsed_account_id and fallback:
+            parsed_account_id = fallback.id
+        if not parsed_account_id:
+            continue
+        lines.append({
+            "line_no": len(lines) + 1,
+            "expense_account_id": parsed_account_id,
+            "amount": amount,
+            "description": description,
+            "reference": reference,
+            "notes": notes,
+            "expense_nature": nature if nature in CUSTODY_EXPENSE_NATURES else None,
+        })
+
+    return lines
+
+
+def build_custody_owner_rows(all_accounts, settlements, account_balances=None):
+    """صفوف أصحاب العهد: حسابات السواقين/المناديب/المعدات وأي حساب له حركة عهدة."""
+    account_balances = account_balances or {}
+    accounts_by_id = {account.id: account for account in all_accounts}
+    used_account_ids = {settlement.entity_account_id for settlement in settlements}
+    owner_map = {}
+
+    for account in all_accounts:
+        code = (account.code or "").strip().upper()
+        if code.startswith("CAT-"):
+            continue
+        owner_type = get_custody_owner_type(account)
+        if not owner_type and account.id not in used_account_ids:
+            continue
+        owner_map[account.id] = {
+            "account": account,
+            "entity_type": owner_type or (account.category or "حساب"),
+            "entity_name": account.name,
+            "count": 0,
+            "balance": as_float(account_balances.get(account.id, 0)),
+            "latest_date": "",
+            "settlements": [],
+            "disbursed": 0.0,
+            "settled": 0.0,
+            "returned": 0.0,
+        }
+
+    for settlement in settlements:
+        owner = owner_map.get(settlement.entity_account_id)
+        if not owner:
+            account = accounts_by_id.get(settlement.entity_account_id)
+            if not account:
+                continue
+            owner = owner_map.setdefault(account.id, {
+                "account": account,
+                "entity_type": get_custody_owner_type(account) or (account.category or "حساب"),
+                "entity_name": account.name,
+                "count": 0,
+                "balance": as_float(account_balances.get(account.id, 0)),
+                "latest_date": "",
+                "settlements": [],
+                "disbursed": 0.0,
+                "settled": 0.0,
+                "returned": 0.0,
+            })
+        owner["count"] += 1
+        owner["latest_date"] = max(owner["latest_date"], settlement.date or "")
+
+        op_type = get_custody_operation_type(settlement)
+        amount = get_custody_settlement_amount(settlement)
+        if op_type in CUSTODY_DISBURSE_OPERATIONS:
+            owner["disbursed"] += amount
+        elif op_type == "رد باقي عهدة":
+            owner["returned"] += amount
+        else:
+            owner["settled"] += amount
+
+        owner["settlements"].append({
+            "settlement": settlement,
+            "operation_type": op_type,
+            "amount": amount,
+        })
+
+    rows = list(owner_map.values())
+    for row in rows:
+        row["settlements"].sort(key=lambda item: ((item["settlement"].date or ""), item["settlement"].id))
+        row["remaining"] = round(row["disbursed"] - (row["settled"] + row["returned"]), 2)
+        for field in ("disbursed", "settled", "returned"):
+            row[field] = round(row[field], 2)
+    rows.sort(key=lambda row: (row["latest_date"], row["balance"], row["entity_name"]), reverse=True)
+    return rows
+
+
+def get_custody_expense_accounts(accounts, entity_accounts):
+    """كل حسابات المصروفات متاحة للتسوية، فمصروفات العهد قد تشمل أي بند مصروف."""
+    blocked_ids = {account.id for account in entity_accounts}
+    expense_accounts = []
+    for account in accounts:
+        if account.id in blocked_ids:
+            continue
+        category = (account.category or "").strip()
+        code = (account.code or "").strip().upper()
+        if code.startswith("CAT-"):
+            continue
+        if category == "المصروفات":
+            expense_accounts.append(account)
+    expense_accounts.sort(key=lambda account: ((account.expense_class or "zz"), (account.code or ""), (account.name or "")))
+    return expense_accounts
+
+
+# ---------------------------------------------------------------------------
+# مستخلصات مقاولي الباطن (SRS 2.2)
+# ---------------------------------------------------------------------------
+
+
+def generate_progress_payment_number(project_id, subcontractor_id):
+    query = ProgressPayment.query.filter(ProgressPayment.project_id == project_id)
+    if subcontractor_id:
+        query = query.filter(ProgressPayment.subcontractor_id == subcontractor_id)
+    else:
+        query = query.filter(ProgressPayment.subcontractor_id.is_(None))
+    highest = 0
+    for item in query.all():
+        raw = (item.payment_number or "").strip()
+        if raw.isdigit():
+            highest = max(highest, int(raw))
+    return str(highest + 1)
+
+
+SUB_PAY_KIND_ADVANCE = "تحت الحساب"
+SUB_PAY_KIND_SETTLEMENT = "صرف مستخلص"
+
+
+def is_advance_subcontractor_payment(payment):
+    kind = (getattr(payment, "payment_kind", None) or SUB_PAY_KIND_ADVANCE).strip()
+    return kind != SUB_PAY_KIND_SETTLEMENT
+
+
+def sanitize_progress_item_boq(lines, project_id):
+    if not project_id:
+        for line in lines:
+            line["boq_item_id"] = None
+        return lines
+    valid_ids = {
+        item.id for item in BOQItem.query.filter_by(project_id=project_id).all()
+    }
+    for line in lines:
+        if line.get("boq_item_id") and line["boq_item_id"] not in valid_ids:
+            line["boq_item_id"] = None
+    return lines
+
+
+def executed_quantity_index(exclude_payment_id=None):
+    query = ProgressPaymentItem.query
+    if exclude_payment_id:
+        query = query.filter(ProgressPaymentItem.progress_payment_id != exclude_payment_id)
+    rows = []
+    for item in query.all():
+        payment = item.payment
+        if not payment:
+            continue
+        rows.append({
+            "payment_id": payment.id,
+            "project_id": payment.project_id,
+            "subcontractor_id": payment.subcontractor_id,
+            "boq_item_id": item.boq_item_id,
+            "description": (item.description or (item.boq_item.name if item.boq_item else "")).strip(),
+            "unit": item.unit or "",
+            "quantity": as_float(item.quantity),
+        })
+    return rows
+
+
+def previous_executed_quantity(project_id, subcontractor_id, boq_item_id=None, description="", unit="", exclude_payment_id=None):
+    total = 0.0
+    description = (description or "").strip().casefold()
+    unit = (unit or "").strip()
+    for row in executed_quantity_index(exclude_payment_id):
+        if row["project_id"] != project_id:
+            continue
+        if (row["subcontractor_id"] or None) != (subcontractor_id or None):
+            continue
+        if boq_item_id and row["boq_item_id"] == boq_item_id:
+            total += as_float(row["quantity"])
+            continue
+        if boq_item_id:
+            continue
+        if (row["description"] or "").casefold() == description and (row["unit"] or "") == unit and description:
+            total += as_float(row["quantity"])
+    return round(total, 2)
+
+
+def percentage_or_amount(percentage, amount, base):
+    percentage = as_float(percentage)
+    if percentage > 0:
+        return round(as_float(base) * percentage / 100.0, 2)
+    return round(as_float(amount), 2)
+
+
+def max_advance_deduction(works_total, deductions_total, outstanding):
+    room = max(0.0, round(as_float(works_total) - as_float(deductions_total), 2))
+    return round(min(max(0.0, as_float(outstanding)), room), 2)
+
+
+def progress_settlements_total(payment_id):
+    if not payment_id:
+        return 0.0
+    return round(sum(
+        as_float(item.amount)
+        for item in SubcontractorPayment.query.filter_by(progress_payment_id=payment_id).all()
+        if not is_advance_subcontractor_payment(item)
+    ), 2)
+
+
+def progress_linked_cash_total(payment_id):
+    if not payment_id:
+        return 0.0
+    return round(sum(
+        as_float(item.amount)
+        for item in SubcontractorPayment.query.filter_by(progress_payment_id=payment_id).all()
+    ), 2)
+
+
+def allocate_progress_cash(payments):
+    """يربط كل دفعة نقدية بمستخلص واحد: المرتبط أولاً، وإلا آخر مستخلص لنفس المقاول/المشروع."""
+    assigned = {item.id: [] for item in (payments or [])}
+    by_id = {item.id: item for item in (payments or [])}
+    ipcs = list(payments or [])
+    for cash in SubcontractorPayment.query.order_by(SubcontractorPayment.id.asc()).all():
+        target = None
+        if cash.progress_payment_id and cash.progress_payment_id in by_id:
+            target = by_id[cash.progress_payment_id]
+        else:
+            candidates = [item for item in ipcs if item.subcontractor_id == cash.subcontractor_id]
+            if cash.project_id:
+                project_matches = [item for item in candidates if item.project_id == cash.project_id]
+                if project_matches:
+                    candidates = project_matches
+            if candidates:
+                target = max(candidates, key=lambda item: item.id)
+        if target:
+            assigned[target.id].append(cash)
+    return assigned
+
+
+def build_progress_paid_map(payments):
+    """المنصرف في سجل المستخلصات = كل الدفعات النقدية الظاهرة على المستخلص."""
+    assigned = allocate_progress_cash(payments)
+    paid = {}
+    for item in payments or []:
+        cash_total = sum(as_float(cash.amount) for cash in assigned.get(item.id, []))
+        paid[item.id] = round(max(cash_total, as_float(item.advance_deduction)), 2)
+    return paid
+
+
+def build_progress_remaining_map(payments):
+    """المتبقي للصرف = الصافي − صرف المستخلص − السلف اللي لسه متخصمتش على نفس المستخلص."""
+    assigned = allocate_progress_cash(payments)
+    remaining = {}
+    for item in payments or []:
+        rows = assigned.get(item.id, [])
+        settlements = sum(as_float(cash.amount) for cash in rows if not is_advance_subcontractor_payment(cash))
+        advances_here = sum(as_float(cash.amount) for cash in rows if is_advance_subcontractor_payment(cash))
+        extra_advances = max(0.0, advances_here - as_float(item.advance_deduction))
+        remaining[item.id] = round(as_float(item.net_value) - settlements - extra_advances, 2)
+    return remaining
+
+
+def resolve_treasury_account_id(raw):
+    text = (raw or "").strip()
+    if not text:
+        return None
+    account_id = as_int(text)
+    if account_id:
+        account = ChartOfAccount.query.get(account_id)
+        if account:
+            return account.id
+    account = lookup_existing_account(text)
+    return account.id if account else None
+
+
+def ensure_subcontractor_payment_journals():
+    """دفعات المقاول تفضل في شاشته. لا يُنشأ لها قيد يومية تلقائي."""
+    return False
+
+
+def progress_net_remaining(payment):
+    return round(as_float(payment.net_value) - progress_settlements_total(payment.id), 2)
+
+
+def get_subcontractor_outstanding_retention(subcontractor_id, exclude_release_id=None):
+    if not subcontractor_id:
+        return 0.0
+    held = sum(
+        as_float(item.discount_insurance)
+        for item in ProgressPayment.query.filter_by(subcontractor_id=subcontractor_id).all()
+    )
+    query = SubcontractorRetentionRelease.query.filter_by(subcontractor_id=subcontractor_id)
+    if exclude_release_id:
+        query = query.filter(SubcontractorRetentionRelease.id != exclude_release_id)
+    released = sum(as_float(item.amount) for item in query.all())
+    return round(held - released, 2)
+
+
+def parse_progress_payment_items(form):
+    """يقرأ بنود المستخلص: البند، الوحدة، الكمية المنفذة للفترة، سعر الفئة."""
+    boq_item_ids = form.getlist("boq_item_id")
+    descriptions = form.getlist("description")
+    units = form.getlist("unit")
+    quantities = form.getlist("quantity")
+    unit_prices = form.getlist("unit_price")
+
+    max_len = max(
+        len(boq_item_ids),
+        len(descriptions),
+        len(units),
+        len(quantities),
+        len(unit_prices),
+    ) if any([boq_item_ids, descriptions, units, quantities, unit_prices]) else 0
+
+    lines = []
+    for index in range(max_len):
+        boq_item_id = as_int(boq_item_ids[index]) if index < len(boq_item_ids) else None
+        description = (descriptions[index] if index < len(descriptions) else "").strip()
+        unit = (units[index] if index < len(units) else "").strip()
+        quantity = as_float(quantities[index] if index < len(quantities) else 0)
+        unit_price = as_float(unit_prices[index] if index < len(unit_prices) else 0)
+        line_value = round(quantity * unit_price, 2)
+
+        if line_value <= 0 and not description and not boq_item_id:
+            continue
+        if line_value <= 0:
+            continue
+
+        lines.append({
+            "boq_item_id": boq_item_id,
+            "description": description or None,
+            "unit": unit or None,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "value": line_value,
+        })
+    return lines
+
+
+def recalculate_progress_payment(payment, outstanding_advances=None):
+    """المعادلات المحاسبية للمستخلص (SRS 2.2).
+
+    الإجمالي المستحق للبند = كمية الفترة × سعر الفئة
+    إجمالي قيمة الأعمال = مجموع إجماليات البنود
+    صافي المستحق = إجمالي الأعمال - (الدفعات تحت الحساب + الاستقطاعات/الخصومات)
+    """
+    items = ProgressPaymentItem.query.filter_by(progress_payment_id=payment.id).all()
+    total_value = 0.0
+    for item in items:
+        item.value = round(as_float(item.quantity) * as_float(item.unit_price), 2)
+        total_value += item.value
+
+    payment.total_value = round(total_value, 2)
+    payment.discount_insurance = percentage_or_amount(
+        payment.retention_percentage, payment.discount_insurance, payment.total_value
+    )
+    payment.tax = percentage_or_amount(payment.tax_percentage, payment.tax, payment.total_value)
+    payment.discount_value = percentage_or_amount(
+        payment.discount_percentage, payment.discount_value, payment.total_value
+    )
+
+    deductions_total = round(payment.deductions_total, 2)
+    advances = max(0.0, as_float(payment.advance_deduction))
+    if outstanding_advances is not None:
+        cap = max_advance_deduction(payment.total_value, deductions_total, outstanding_advances)
+        advances = min(advances, cap)
+    else:
+        cap = max_advance_deduction(payment.total_value, deductions_total, advances)
+        advances = min(advances, cap)
+    payment.advance_deduction = round(advances, 2)
+    payment.net_value = round(payment.total_value - (payment.advance_deduction + deductions_total), 2)
+    return payment
+
+
+def get_subcontractor_outstanding_advances(subcontractor_id, exclude_payment_id=None):
+    """الدفعات تحت الحساب التي لم تُخصم في أي مستخلص بعد. صرف صافي المستخلص لا يُحسب سلفة."""
+    if not subcontractor_id:
+        return 0.0
+    paid = sum(
+        as_float(item.amount)
+        for item in SubcontractorPayment.query.filter_by(subcontractor_id=subcontractor_id).all()
+        if is_advance_subcontractor_payment(item)
+    )
+    deducted_query = ProgressPayment.query.filter_by(subcontractor_id=subcontractor_id)
+    if exclude_payment_id:
+        deducted_query = deducted_query.filter(ProgressPayment.id != exclude_payment_id)
+    deducted = sum(as_float(item.advance_deduction) for item in deducted_query.all())
+    return round(paid - deducted, 2)
+
+
+JOURNAL_SOURCE_MARKER = "JRN-SRC:"
+
+
+def journal_source_note(entry_id):
+    return f"{JOURNAL_SOURCE_MARKER}{entry_id}"
+
+
+def is_journal_sourced_document(notes):
+    return JOURNAL_SOURCE_MARKER in (notes or "")
+
+
+def journal_id_from_source_note(notes):
+    if JOURNAL_SOURCE_MARKER not in (notes or ""):
+        return None
+    token = (notes or "").split(JOURNAL_SOURCE_MARKER, 1)[1].split()[0]
+    try:
+        return int(token)
+    except (TypeError, ValueError):
+        return None
+
+
+def _payment_method_from_treasury(account):
+    blob = f"{(account.code or '')} {(account.name or '')}"
+    if "BANK" in (account.code or "").upper() or "بنك" in blob:
+        return PAYMENT_METHOD_BANK
+    if "INSTAPAY" in blob.upper() or "انستا" in blob:
+        return PAYMENT_METHOD_INSTAPAY
+    if "محفظ" in blob or "WALLET" in blob.upper():
+        return PAYMENT_METHOD_WALLET
+    return PAYMENT_METHOD_CASH
+
+
+def _skip_category_parent(account):
+    code = ((account.code or "") if account else "").strip().upper()
+    return not account or code.startswith("CAT-")
+
+
+def subcontractor_from_account(account):
+    if _skip_category_parent(account) or is_system_chart_account(account):
+        return None
+    label = stripped_party_name(account)
+    if label and (account.category or "").strip() == "مقاولي الباطن":
+        found = _find_named_model(Subcontractor, "name", label)
+        if found:
+            return found
+    code = (account.code or "").strip().upper()
+    if code.startswith("SUB-") and not label:
+        tail = code.split("-", 1)[1]
+        if tail.isdigit():
+            return Subcontractor.query.get(int(tail))
+    return None
+
+
+def supplier_from_account(account):
+    if _skip_category_parent(account) or is_system_chart_account(account):
+        return None
+    label = stripped_party_name(account)
+    if label and (account.category or "").strip() in {"الموردين", "موردين"}:
+        found = _find_named_model(Supplier, "name", label)
+        if found:
+            return found
+    code = (account.code or "").strip().upper()
+    if code.startswith("SUP-") and not label:
+        tail = code.split("-", 1)[1]
+        if tail.isdigit():
+            return Supplier.query.get(int(tail))
+    return None
+
+
+def employee_from_account(account):
+    if _skip_category_parent(account) or is_system_chart_account(account):
+        return None
+    label = stripped_party_name(account)
+    if label and (account.category or "").strip() == "الموظفين":
+        found = _find_named_model(Employee, "name", label)
+        if found:
+            return found
+        for employee in Employee.query.all():
+            if names_match(employee.display_name, label):
+                return employee
+    code = (account.code or "").strip().upper()
+    if code.startswith("EMP-") and not label:
+        for employee in Employee.query.all():
+            if (employee.code or "").strip().upper() == code:
+                return employee
+        tail = code.split("-", 1)[1]
+        if tail.isdigit():
+            found = Employee.query.get(int(tail))
+            if found and not (found.code or "").strip():
+                return found
+    return None
+
+
+def client_name_from_account(account):
+    if _skip_category_parent(account) or not account or account.category != "العملاء":
+        return ""
+    name = account.name or ""
+    if name.startswith("عميل - "):
+        name = name[7:]
+    return canonical_client_name(name)
+
+
+def _query_journal_sourced(model, entry_id):
+    marker = journal_source_note(entry_id)
+    rows = model.query.filter(model.notes.like(f"%{marker}%")).all()
+    if rows:
+        return rows
+    if model is EquipmentMaintenance:
+        return EquipmentMaintenance.query.filter_by(source_type="يومية", source_id=entry_id).all()
+    return []
+
+
+def _delete_journal_sourced_docs(entry_id):
+    """يمسح مستند الدفعة المولَّد من القيد حتى لا يفضل في كشف طرف بعد حذف القيد."""
+    changed = False
+    for model in (SubcontractorPayment, SupplierPayment, ClientReceipt, EmployeeSalaryPayment, EquipmentMaintenance):
+        for item in _query_journal_sourced(model, entry_id):
+            db.session.delete(item)
+            changed = True
+    return changed
+
+
+def _same_stored_value(current, new):
+    numeric = (int, float, Decimal)
+    if (
+        isinstance(current, numeric) and isinstance(new, numeric)
+        and not isinstance(current, bool) and not isinstance(new, bool)
+    ):
+        return abs(as_float(current) - as_float(new)) < 0.000001
+    return current == new
+
+
+def _upsert_journal_sourced_row(model, entry, defaults):
+    """يرجع True بس لو المستند اتغير فعلًا، عشان المزامنة المتكررة ما تكتبش ولا تسجل «تعديل» وهمي."""
+    existing = _query_journal_sourced(model, entry.id)
+    row = existing[0] if existing else None
+    changed = False
+    for extra in existing[1:]:
+        db.session.delete(extra)
+        changed = True
+    if as_float(defaults.get("amount")) <= 0:
+        if row is not None:
+            db.session.delete(row)
+            return True
+        return changed
+    if row is None:
+        row = model(**defaults)
+        db.session.add(row)
+        return True
+    for key, value in defaults.items():
+        if not _same_stored_value(getattr(row, key), value):
+            setattr(row, key, value)
+            changed = True
+    return changed
+
+
+def clear_journal_sourced_docs(entry_id, commit=True):
+    changed = _delete_journal_sourced_docs(entry_id)
+    if changed and commit:
+        db.session.commit()
+    return changed
+
+
+def posted_source_journal(doc):
+    """قيد اليومية المرحّل اللي اتولدت منه الدفعة/التحصيل (JRN-SRC)، لو موجود."""
+    entry_id = journal_id_from_source_note(getattr(doc, "notes", None))
+    if not entry_id:
+        return None
+    entry = JournalEntry.query.get(entry_id)
+    if entry and normalize_journal_status(entry.status) == "مرحل":
+        return entry
+    return None
+
+
+def _journal_cancelled_by_reversal(entry, reversed_ids=None):
+    """القيد العكسي الجديد والقيد اللي اتعكس بيه ما يولّدوش دفعات في الشاشات التشغيلية."""
+    if getattr(entry, "reversal_of_id", None):
+        return True
+    if reversed_ids is not None:
+        return entry.id in reversed_ids
+    return JournalEntry.query.filter_by(reversal_of_id=entry.id, status="مرحل").first() is not None
+
+
+def sync_operational_docs_from_journal(entry, commit=True, reversed_ids=None):
+    """قيد اليومية اليدوي على حساب طرف يُنشئ دفعة/تحصيل تشغيلي حتى يظهر في كشفه."""
+    if not entry or not getattr(entry, "id", None):
+        return False
+    if (
+        is_auto_journal_entry(entry)
+        or normalize_journal_status(entry.status) != "مرحل"
+        or _journal_cancelled_by_reversal(entry, reversed_ids)
+    ):
+        changed = _delete_journal_sourced_docs(entry.id)
+        if changed and commit:
+            db.session.commit()
+        return changed
+
+    debit = entry.debit_account or ChartOfAccount.query.get(entry.debit_account_id)
+    credit = entry.credit_account or ChartOfAccount.query.get(entry.credit_account_id)
+    amount = round(as_float(entry.amount), 2)
+    marker = journal_source_note(entry.id)
+    note = f"{marker} - من قيد اليومية {entry.display_number}"
+    changed = False
+
+    sub = subcontractor_from_account(debit)
+    supplier = supplier_from_account(debit)
+    employee = employee_from_account(debit)
+    client_name = client_name_from_account(credit)
+    treasury_out = credit if is_operational_treasury_account(credit) else None
+    treasury_in = debit if is_operational_treasury_account(debit) else None
+
+    matched = False
+    if sub and amount > 0:
+        matched = True
+        changed = _upsert_journal_sourced_row(SubcontractorPayment, entry, {
+            "subcontractor_id": sub.id,
+            "project_id": entry.project_id,
+            "date": entry.date or date.today().isoformat(),
+            "amount": amount,
+            "payment_method": _payment_method_from_treasury(treasury_out or credit),
+            "treasury_account_id": (treasury_out.id if treasury_out else None),
+            "reference": entry.reference or entry.display_number,
+            "notes": note,
+        })
+    elif supplier and amount > 0:
+        matched = True
+        changed = _upsert_journal_sourced_row(SupplierPayment, entry, {
+            "supplier_id": supplier.id,
+            "project_id": entry.project_id,
+            "date": entry.date or date.today().isoformat(),
+            "amount": amount,
+            "payment_method": _payment_method_from_treasury(treasury_out or credit),
+            "treasury_account_id": (treasury_out.id if treasury_out else None),
+            "reference": entry.reference or entry.display_number,
+            "notes": note,
+            "status": "مرحّل",
+        })
+    elif employee and amount > 0:
+        matched = True
+        changed = _upsert_journal_sourced_row(EmployeeSalaryPayment, entry, {
+            "employee_id": employee.id,
+            "date": entry.date or date.today().isoformat(),
+            "amount": amount,
+            "payment_method": _payment_method_from_treasury(treasury_out or credit),
+            "treasury_account_id": (treasury_out.id if treasury_out else None),
+            "reference": entry.reference or entry.display_number,
+            "notes": note,
+        })
+    elif client_name and treasury_in and amount > 0:
+        matched = True
+        changed = _upsert_journal_sourced_row(ClientReceipt, entry, {
+            "client_name": client_name,
+            "project_id": entry.project_id,
+            "date": entry.date or date.today().isoformat(),
+            "amount": amount,
+            "payment_method": _payment_method_from_treasury(treasury_in),
+            "treasury_account_id": treasury_in.id,
+            "reference": entry.reference or entry.display_number,
+            "notes": note,
+            "status": "مرحّل",
+        })
+    else:
+        equipment = Equipment.query.get(entry.equipment_id) if getattr(entry, "equipment_id", None) else None
+        if equipment and treasury_out and amount > 0:
+            matched = True
+            if not (entry.cost_center or "").strip():
+                entry.cost_center = f"معدة - {equipment.name}"
+                changed = True
+            changed = _upsert_journal_sourced_row(EquipmentMaintenance, entry, {
+                "equipment_id": equipment.id,
+                "date": entry.date or date.today().isoformat(),
+                "work_type": infer_equipment_expense_kind(entry.description, entry.cost_center, equipment.name),
+                "description": entry.description,
+                "quantity": 1,
+                "unit_price": amount,
+                "amount": amount,
+                "source_type": "يومية",
+                "source_id": entry.id,
+                "treasury_account_id": treasury_out.id,
+                "notes": note,
+            }) or changed
+
+    if not matched:
+        changed = _delete_journal_sourced_docs(entry.id) or changed
+
+    if changed and commit:
+        db.session.commit()
+    return changed
+
+
+def sync_posted_journals_to_documents():
+    """يربط القيود المرحلة الحالية بالمستندات التشغيلية، بما فيها القيود القديمة."""
+    if is_page_view():
+        return False
+    changed = False
+    reversed_ids = {
+        row[0]
+        for row in db.session.query(JournalEntry.reversal_of_id).filter(
+            JournalEntry.reversal_of_id.isnot(None),
+            JournalEntry.status == "مرحل",
+        ).all()
+    }
+    for entry in JournalEntry.query.filter_by(status="مرحل").order_by(JournalEntry.id.asc()).all():
+        if is_auto_journal_entry(entry):
+            continue
+        if sync_operational_docs_from_journal(entry, commit=False, reversed_ids=reversed_ids):
+            changed = True
+    if changed:
+        db.session.commit()
+    return changed
+
+
+def sync_derived_records():
+    """يكمّل الحسابات والأصناف وربط الأنواع. القيود التلقائية تتشال ولا تترجع."""
+    purge_automatic_journals(commit=False)
+    sync_journal_related_accounts()
+    ensure_stock_items_from_history()
+    sync_posted_journals_to_documents()
+    db.session.commit()
+
+
+def purge_inferred_journal_equipment_docs_once():
+    """يشيل بنود سجل الصيانة اللي اتربطت وحدها من قيود قديمة، من غير ما يمسح القيد نفسه."""
+    if ActivityLog.query.filter_by(entity_type="sys", entity_label=JOURNAL_EQP_INFER_PURGE_MARK).first():
+        return False
+    rows = EquipmentMaintenance.query.filter(
+        db.or_(
+            EquipmentMaintenance.source_type == "يومية",
+            EquipmentMaintenance.notes.like(f"%{JOURNAL_SOURCE_MARKER}%"),
+        )
+    ).all()
+    journal_ids = set()
+    for row in rows:
+        if row.source_id:
+            journal_ids.add(row.source_id)
+        try:
+            void_document_journals("equipment_maintenance", row.id, commit=False, check_period=False)
+        except PeriodClosedError:
+            pass
+        db.session.delete(row)
+    for entry in JournalEntry.query.filter(JournalEntry.equipment_id.isnot(None)).all():
+        if is_auto_journal_entry(entry):
+            continue
+        journal_ids.add(entry.id)
+        entry.equipment_id = None
+    db.session.add(ActivityLog(
+        created_at=datetime.now().isoformat(timespec="seconds"),
+        user_name="النظام",
+        action="تحديث",
+        entity_type="sys",
+        entity_label=JOURNAL_EQP_INFER_PURGE_MARK,
+        summary="إلغاء ربط المعدات التلقائي من قيود اليومية القديمة مع الإبقاء على القيود",
+    ))
+    db.session.commit()
+    return True
+
+
+def sync_progress_payment_journals(payment):
+    """قيود المستخلص: قيمة الأعمال بالكامل على حساب الطرف، ثم كل استقطاع بقيد مستقل."""
+    sync_journal_related_accounts()
+    marker = f"PP-AUTO:{payment.id}"
+    journal_date = payment.date or payment.period_end or date.today().isoformat()
+    reference = payment.payment_number or f"PP-{payment.id:06d}"
+    project = payment.project
+    cost_center = f"مشروع - {project.display_name}" if project else None
+    total_value = as_float(payment.total_value)
+    payloads = []
+
+    def base_payload(description, debit_id, credit_id, amount):
+        return {
+            "date": journal_date,
+            "reference": reference,
+            "journal_name": "المستخلصات",
+            "status": "مرحل",
+            "description": f"{marker} - {description}",
+            "debit_account_id": debit_id,
+            "credit_account_id": credit_id,
+            "amount": round(as_float(amount), 2),
+            "project_id": payment.project_id,
+            "cost_center": cost_center,
+        }
+
+    if payment.subcontractor_id:
+        subcontractor = payment.subcontractor
+        party_account = get_or_create_subcontractor_account(subcontractor)
+        expense_account = get_account_by_code("EXP-SUB")
+        party_label = subcontractor.name if subcontractor else "مقاول باطن"
+
+        works_label = progress_payment_works_label(payment)
+        if party_account and expense_account and total_value > 0:
+            payloads.append(base_payload(
+                clip_text(
+                    f"مستخلص رقم {reference} - أعمال منفذة لمقاول الباطن {party_label}"
+                    + (f" - البند: {works_label}" if works_label else "")
+                ),
+                expense_account.id,
+                party_account.id,
+                total_value,
+            ))
+
+        # الاستقطاعات تُخصم من حساب المقاول لصالح حسابات الاحتجاز/الضرائب/الغرامات
+        deduction_map = [
+            (as_float(payment.discount_insurance), "LIB-RET", "استقطاع تأمينات/ضمان"),
+            (as_float(payment.tax), "LIB-TAX", "استقطاع ضرائب"),
+            (as_float(payment.discount_value), "REV-OTH", "خصم تجاري"),
+            (as_float(payment.penalties), "REV-PEN", "غرامات وخصومات"),
+            (as_float(payment.other_deductions), "REV-OTH", "استقطاعات أخرى"),
+        ]
+        for amount, account_code, label in deduction_map:
+            target_account = get_account_by_code(account_code)
+            if amount > 0 and party_account and target_account:
+                payloads.append(base_payload(
+                    f"مستخلص رقم {reference} - {label} على مقاول الباطن {party_label}",
+                    party_account.id,
+                    target_account.id,
+                    amount,
+                ))
+    else:
+        # مستخلص مقدم للعميل: إيراد على حساب العميل واستقطاعاته أصول محتجزة لدى الغير
+        client_account = get_or_create_client_account(project.client_name if project else "")
+        revenue_account = get_account_by_code("REV-WRK")
+        client_label = project.client_name if project else "عميل"
+
+        works_label = progress_payment_works_label(payment)
+        if client_account and revenue_account and total_value > 0:
+            payloads.append(base_payload(
+                clip_text(
+                    f"مستخلص رقم {reference} - أعمال منفذة للعميل {client_label}"
+                    + (f" - البند: {works_label}" if works_label else "")
+                ),
+                client_account.id,
+                revenue_account.id,
+                total_value,
+            ))
+
+        deduction_map = [
+            (as_float(payment.discount_insurance), "RET-CLI", "تأمينات محتجزة لدى العميل"),
+            (as_float(payment.tax), "TAX-WHT", "ضرائب مخصومة تحت الحساب"),
+            (as_float(payment.discount_value), "EXP-PEN", "خصم تجاري"),
+            (as_float(payment.penalties), "EXP-PEN", "غرامات وجزاءات"),
+            (as_float(payment.other_deductions), "EXP-PEN", "استقطاعات أخرى"),
+        ]
+        for amount, account_code, label in deduction_map:
+            target_account = get_account_by_code(account_code)
+            if amount > 0 and client_account and target_account:
+                payloads.append(base_payload(
+                    f"مستخلص رقم {reference} - {label}",
+                    target_account.id,
+                    client_account.id,
+                    amount,
+                ))
+
+    replace_auto_journals(marker, payloads)
+
+
+def _rewrite_source_journal(doc, debit_account_id, credit_account_id, amount, entry_date, reference=None, project_id=None):
+    """تعديل/حذف قيد اليومية الأصلي المرتبط بدفعة JRN-SRC حتى يسمع في الحسابين."""
+    entry = JournalEntry.query.get(journal_id_from_source_note(getattr(doc, "notes", None)))
+    if not entry:
+        return False
+    assert_period_open(entry.date)
+    assert_period_open(entry_date)
+    amount = round(as_float(amount), 2)
+    if normalize_journal_status(entry.status) == "مرحل":
+        unchanged = (
+            abs(as_float(entry.amount) - amount) < 0.005
+            and entry.debit_account_id == debit_account_id
+            and entry.credit_account_id == credit_account_id
+            and (entry_date or entry.date) == entry.date
+        )
+        if not unchanged:
+            return False
+    if amount <= 0 or not debit_account_id or not credit_account_id or debit_account_id == credit_account_id:
+        db.session.delete(entry)
+        return True
+    entry.date = entry_date or entry.date
+    entry.amount = amount
+    entry.debit_account_id = debit_account_id
+    entry.credit_account_id = credit_account_id
+    if reference:
+        entry.reference = reference
+    if project_id is not None:
+        entry.project_id = project_id
+    return True
+
+
+def sync_subcontractor_payment_journal(advance):
+    """دفعة تحت الحساب: مدين حساب المقاول / دائن الخزنة."""
+    sync_journal_related_accounts()
+    party_account = get_or_create_subcontractor_account(advance.subcontractor)
+    treasury_account = None
+    if advance.treasury_account_id:
+        treasury_account = ChartOfAccount.query.get(advance.treasury_account_id)
+    if not treasury_account:
+        treasury_account = get_account_by_code("TRS-MAIN")
+    amount = as_float(advance.amount)
+    entry_date = advance.date or date.today().isoformat()
+    if is_journal_sourced_document(advance.notes):
+        replace_auto_journals(f"SPAY-AUTO:{advance.id}", [], commit=False)
+        _rewrite_source_journal(
+            advance,
+            party_account.id if party_account else None,
+            treasury_account.id if treasury_account else None,
+            amount,
+            entry_date,
+            reference=advance.reference,
+            project_id=advance.project_id,
+        )
+        db.session.commit()
+        return
+    marker = f"SPAY-AUTO:{advance.id}"
+    party_account = get_or_create_subcontractor_account(advance.subcontractor)
+    treasury_account = None
+    if advance.treasury_account_id:
+        treasury_account = ChartOfAccount.query.get(advance.treasury_account_id)
+    if not treasury_account:
+        treasury_account = get_account_by_code("TRS-MAIN")
+
+    payloads = []
+    amount = as_float(advance.amount)
+    if party_account and treasury_account and amount > 0:
+        project = advance.project
+        payloads.append({
+            "date": advance.date or date.today().isoformat(),
+            "reference": advance.reference or f"SPAY-{advance.id:06d}",
+            "journal_name": "المستخلصات",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - "
+                f"{'صرف صافي مستخلص' if not is_advance_subcontractor_payment(advance) else 'دفعة تحت الحساب'}"
+                f" ({advance.payment_method}) "
+                f"لمقاول الباطن {advance.subcontractor.name if advance.subcontractor else ''}"
+            ).strip(),
+            "debit_account_id": party_account.id,
+            "credit_account_id": treasury_account.id,
+            "amount": round(amount, 2),
+            "project_id": advance.project_id,
+            "cost_center": f"مشروع - {project.display_name}" if project else None,
+        })
+
+    replace_auto_journals(marker, payloads)
+
+
+def sync_retention_release_journal(release):
+    """إفراج ضمان: مدين التأمينات المحتجزة / دائن حساب المقاول."""
+    sync_journal_related_accounts()
+    marker = f"RETREL-AUTO:{release.id}"
+    party_account = get_or_create_subcontractor_account(release.subcontractor) if release.subcontractor else None
+    retention_account = get_account_by_code("LIB-RET")
+    amount = as_float(release.amount)
+    payloads = []
+    if party_account and retention_account and amount > 0:
+        project = release.project
+        payloads.append({
+            "date": release.date or date.today().isoformat(),
+            "reference": release.reference or f"RETREL-{release.id:06d}",
+            "journal_name": "المستخلصات",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - إفراج ضمان لمقاول الباطن "
+                f"{release.subcontractor.name if release.subcontractor else ''}"
+            ).strip(),
+            "debit_account_id": retention_account.id,
+            "credit_account_id": party_account.id,
+            "amount": round(amount, 2),
+            "project_id": release.project_id,
+            "cost_center": f"مشروع - {project.display_name}" if project else None,
+        })
+    replace_auto_journals(marker, payloads)
+
+
+def build_subcontractor_statement(subcontractor):
+    """كشف حساب مقاول باطن: الأعمال المنفذة، المسدد، الرصيد المتبقي (SRS 5)."""
+    payments = ProgressPayment.query.filter_by(subcontractor_id=subcontractor.id)\
+        .order_by(ProgressPayment.date.asc(), ProgressPayment.id.asc()).all()
+    advances = SubcontractorPayment.query.filter_by(subcontractor_id=subcontractor.id)\
+        .order_by(SubcontractorPayment.date.asc(), SubcontractorPayment.id.asc()).all()
+
+    total_works = round(sum(as_float(item.total_value) for item in payments), 2)
+    total_deductions = round(sum(as_float(item.deductions_total) for item in payments), 2)
+    total_paid = round(sum(as_float(item.amount) for item in advances), 2)
+    net_due = round(total_works - (total_paid + total_deductions), 2)
+
+    movements = []
+    for payment in payments:
+        works_label = progress_payment_works_label(payment)
+        movements.append({
+            "date": payment.date or payment.period_end or "",
+            "source": "مستخلص",
+            "reference": payment.document_number,
+            "description": (
+                f"أعمال منفذة - {payment.project.display_name if payment.project else '-'}"
+                + (f" - البند: {works_label}" if works_label else "")
+            ),
+            "detail": f"البند: {works_label}" if works_label else "",
+            "credit": as_float(payment.total_value),
+            "debit": 0.0,
+        })
+        if as_float(payment.deductions_total) > 0:
+            movements.append({
+                "date": payment.date or payment.period_end or "",
+                "source": "استقطاعات",
+                "reference": payment.document_number,
+                "description": (
+                    f"تأمينات/ضمان {format_grouped_number(payment.discount_insurance)}"
+                    f" - ضرائب {format_grouped_number(payment.tax)}"
+                    f" - خصم {format_grouped_number(payment.discount_value)}"
+                    f" - غرامات {format_grouped_number(payment.penalties)}"
+                    f" - أخرى {format_grouped_number(payment.other_deductions)}"
+                ),
+                "credit": 0.0,
+                "debit": as_float(payment.deductions_total),
+            })
+
+    for advance in advances:
+        source_label = "صرف مستخلص" if not is_advance_subcontractor_payment(advance) else "دفعة تحت الحساب"
+        if is_journal_sourced_document(advance.notes):
+            source_label = "قيد يومية / دفعة"
+        movements.append({
+            "date": advance.date or "",
+            "source": source_label,
+            "reference": advance.reference or f"SPAY-{advance.id:06d}",
+            "description": f"صرف {advance.payment_method} - {advance.notes or ''}".strip(),
+            "credit": 0.0,
+            "debit": as_float(advance.amount),
+        })
+
+    releases = SubcontractorRetentionRelease.query.filter_by(subcontractor_id=subcontractor.id)\
+        .order_by(SubcontractorRetentionRelease.date.asc(), SubcontractorRetentionRelease.id.asc()).all()
+    total_retention_released = round(sum(as_float(item.amount) for item in releases), 2)
+    for release in releases:
+        movements.append({
+            "date": release.date or "",
+            "source": "إفراج ضمان",
+            "reference": release.reference or f"RETREL-{release.id:06d}",
+            "description": (release.notes or "إفراج تأمينات/ضمان محتجز").strip(),
+            "credit": as_float(release.amount),
+            "debit": 0.0,
+        })
+
+    party_account = get_or_create_subcontractor_account(subcontractor)
+    sourced_ids = {
+        journal_id_from_source_note(advance.notes)
+        for advance in advances
+        if journal_id_from_source_note(advance.notes)
+    }
+    if party_account:
+        extra_entries = JournalEntry.query.filter(
+            JournalEntry.status == "مرحل",
+            (JournalEntry.debit_account_id == party_account.id) | (JournalEntry.credit_account_id == party_account.id),
+        ).all()
+        for extra in extra_entries:
+            if is_auto_journal_entry(extra) or extra.id in sourced_ids:
+                continue
+            debit = as_float(extra.amount) if extra.debit_account_id == party_account.id else 0.0
+            credit = as_float(extra.amount) if extra.credit_account_id == party_account.id else 0.0
+            if debit <= 0 and credit <= 0:
+                continue
+            total_paid += debit
+            total_works += credit
+            movements.append({
+                "date": extra.date or "",
+                "source": "قيد يومية",
+                "reference": extra.reference or extra.display_number,
+                "description": extra.description or "",
+                "credit": credit,
+                "debit": debit,
+            })
+
+    net_due = round(total_works + total_retention_released - (total_paid + total_deductions), 2)
+
+    movements.sort(key=lambda row: ((row["date"] or ""), row["reference"] or ""))
+    running = 0.0
+    for movement in movements:
+        running += movement["credit"] - movement["debit"]
+        movement["running_balance"] = round(running, 2)
+
+    return {
+        "payments": payments,
+        "advances": advances,
+        "releases": releases,
+        "movements": movements,
+        "total_works": total_works,
+        "total_deductions": total_deductions,
+        "total_paid": total_paid,
+        "total_retention_released": total_retention_released,
+        "retention_outstanding": round(
+            sum(as_float(item.discount_insurance) for item in payments) - total_retention_released, 2
+        ),
+        "net_due": net_due,
+    }
+
+
+# ---------------------------------------------------------------------------
+# مقايسات العملاء (SRS 4)
+# ---------------------------------------------------------------------------
+
+
+def generate_estimation_code():
+    index = Estimation.query.count() + 1
+    while True:
+        candidate = f"EST-{index:05d}"
+        if not Estimation.query.filter_by(code=candidate).first():
+            return candidate
+        index += 1
+
+
+def parse_estimation_items(form):
+    descriptions = form.getlist("item_description")
+    units = form.getlist("item_unit")
+    quantities = form.getlist("item_quantity")
+    unit_prices = form.getlist("item_unit_price")
+    discounts = form.getlist("item_discount_percentage")
+
+    lines = []
+    max_len = max(
+        len(descriptions),
+        len(units),
+        len(quantities),
+        len(unit_prices),
+        len(discounts),
+    ) if any([descriptions, units, quantities, unit_prices, discounts]) else 0
+
+    for index in range(max_len):
+        description = (descriptions[index] if index < len(descriptions) else "").strip()
+        unit = (units[index] if index < len(units) else "").strip()
+        quantity = as_float(quantities[index] if index < len(quantities) else 0)
+        unit_price = as_float(unit_prices[index] if index < len(unit_prices) else 0)
+        discount_percentage = as_float(discounts[index] if index < len(discounts) else 0)
+        total_before_discount = round(quantity * unit_price, 2)
+
+        if not description and total_before_discount <= 0:
+            continue
+
+        lines.append({
+            "description": description or "بند بدون وصف",
+            "unit": unit or None,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "discount_percentage": discount_percentage,
+            "total_before_discount": total_before_discount,
+            "discount_value": round(total_before_discount * discount_percentage / 100.0, 2),
+        })
+    return lines
+
+
+def recalculate_estimation(estimation):
+    """معادلات المقايسة (SRS 4.2).
+
+    إجمالي القيمة = SUM(الكمية × سعر الوحدة)
+    قيمة الخصم = إجمالي القيمة × (نسبة الخصم / 100) + خصومات البنود المحددة
+    الصافي بعد الخصم = إجمالي القيمة - قيمة الخصم
+    القيمة الإجمالية النهائية = الصافي بعد الخصم ± (الصافي بعد الخصم × نسبة الإداريات / 100)
+    """
+    items = EstimationItem.query.filter_by(estimation_id=estimation.id).all()
+
+    total_value = 0.0
+    item_discount_total = 0.0
+    for item in items:
+        item.total_before_discount = round(as_float(item.quantity) * as_float(item.unit_price), 2)
+        item.discount_value = round(
+            item.total_before_discount * as_float(item.discount_percentage) / 100.0, 2
+        )
+        total_value += item.total_before_discount
+        item_discount_total += item.discount_value
+
+    total_value = round(total_value, 2)
+    header_discount = round(total_value * as_float(estimation.discount_percentage) / 100.0, 2)
+
+    estimation.total_value = total_value
+    estimation.discount_value = round(header_discount + item_discount_total, 2)
+    estimation.net_after_discount = round(total_value - estimation.discount_value, 2)
+    estimation.admin_value = round(
+        estimation.net_after_discount * as_float(estimation.admin_percentage) / 100.0, 2
+    )
+    if (estimation.admin_mode or "إضافة") == "خصم":
+        estimation.final_value = round(estimation.net_after_discount - estimation.admin_value, 2)
+    else:
+        estimation.final_value = round(estimation.net_after_discount + estimation.admin_value, 2)
+    return estimation
+
+
+def sync_estimation_journal(estimation):
+    """المقايسة عرض سعر وليست إثبات إيراد.
+
+    الإيراد يُثبت فقط من مستخلص العميل حتى لا يتكرر مع اعتماد المقايسة.
+    أي قيد EST-AUTO قديم يُحذف عند المزامنة.
+    """
+    marker = f"EST-AUTO:{estimation.id}"
+    replace_auto_journals(marker, [])
+
+
+def client_progress_query():
+    return ProgressPayment.query.filter(ProgressPayment.subcontractor_id.is_(None))
+
+
+def subcontractor_progress_query():
+    return ProgressPayment.query.filter(ProgressPayment.subcontractor_id.isnot(None))
+
+
+def sync_labor_journal(entry):
+    """عمالة الموقع: مدين مصروف العمالة / دائن أجور مستحقة، والسلف من الخزنة."""
+    sync_journal_related_accounts()
+    marker = f"LAB-AUTO:{entry.id}"
+    expense_account = get_account_by_code("EXP-LAB")
+    payable_account = get_account_by_code("LIB-WAG") or get_account_by_code("LIB-ACR")
+    treasury = get_account_by_code("TRS-MAIN")
+    project = entry.project
+    cost_center = f"مشروع - {project.display_name}" if project else None
+    payloads = []
+    amount = as_float(entry.amount)
+    advances = as_float(entry.advances)
+    deductions = as_float(entry.deductions)
+    journal_date = entry.date or date.today().isoformat()
+
+    def payload(description, debit_id, credit_id, value):
+        return {
+            "date": journal_date,
+            "reference": f"LAB-{entry.id:06d}",
+            "journal_name": "المصاريف",
+            "status": "مرحل",
+            "description": f"{marker} - {description}",
+            "debit_account_id": debit_id,
+            "credit_account_id": credit_id,
+            "amount": round(as_float(value), 2),
+            "project_id": entry.project_id,
+            "cost_center": cost_center,
+        }
+
+    if expense_account and payable_account and amount > 0:
+        payloads.append(payload(
+            f"استحقاق عمالة {entry.description or ''}".strip(),
+            expense_account.id,
+            payable_account.id,
+            amount,
+        ))
+    if payable_account and treasury and advances > 0:
+        payloads.append(payload(
+            f"سلفة عمالة {entry.description or ''}".strip(),
+            payable_account.id,
+            treasury.id,
+            advances,
+        ))
+    if payable_account and deductions > 0:
+        tax_account = get_account_by_code("LIB-TAX") or payable_account
+        if tax_account.id != payable_account.id:
+            payloads.append(payload(
+                f"خصم عمالة {entry.description or ''}".strip(),
+                payable_account.id,
+                tax_account.id,
+                deductions,
+            ))
+    replace_auto_journals(marker, payloads)
+
+
+def sync_equipment_journals(item):
+    """شراء المعدة أصل، والتشغيل/الصيانة مصروف على المشروع."""
+    sync_journal_related_accounts()
+    asset_account = find_account_by_person("المعدات", item.name)
+    if not asset_account:
+        sync_journal_related_accounts()
+        asset_account = find_account_by_person("المعدات", item.name)
+    payable = get_account_by_code("LIB-PAY")
+    expense_account = get_account_by_code("EXP-EQP")
+    accrued = get_account_by_code("LIB-ACR")
+    project = item.project
+    cost_center = f"مشروع - {project.display_name}" if project else None
+
+    def existing_auto_date(marker):
+        entry = JournalEntry.query.filter(JournalEntry.description.like(f"%{marker}%")).order_by(JournalEntry.id.asc()).first()
+        if entry and entry.date:
+            return entry.date
+        created = (getattr(item, "created_at", None) or "")[:10]
+        return created or date.today().isoformat()
+
+    purchase_marker = f"EQP-AUTO:{item.id}"
+    purchase_date = existing_auto_date(purchase_marker)
+    purchase_payloads = []
+    purchase_cost = as_float(item.purchase_cost)
+    if asset_account and payable and purchase_cost > 0:
+        purchase_payloads.append({
+            "date": purchase_date,
+            "reference": f"EQP-{item.id:06d}",
+            "journal_name": "أصول ثابتة",
+            "status": "مرحل",
+            "description": f"{purchase_marker} - شراء معدة {item.name}",
+            "debit_account_id": asset_account.id,
+            "credit_account_id": payable.id,
+            "amount": round(purchase_cost, 2),
+            "project_id": item.project_id,
+            "cost_center": cost_center,
+        })
+    replace_auto_journals(purchase_marker, purchase_payloads)
+
+    operating_marker = f"EQP-OP-AUTO:{item.id}"
+    operating_date = existing_auto_date(operating_marker)
+    operating_total = as_float(item.operating_cost) + as_float(item.maintenance)
+    operating_payloads = []
+    if expense_account and accrued and operating_total > 0:
+        operating_payloads.append({
+            "date": operating_date,
+            "reference": f"EQP-OP-{item.id:06d}",
+            "journal_name": "المصاريف",
+            "status": "مرحل",
+            "description": f"{operating_marker} - تشغيل وصيانة معدة {item.name}",
+            "debit_account_id": expense_account.id,
+            "credit_account_id": accrued.id,
+            "amount": round(operating_total, 2),
+            "project_id": item.project_id,
+            "cost_center": cost_center,
+        })
+    replace_auto_journals(operating_marker, operating_payloads)
+
+
+def sync_client_receipt_journal(receipt):
+    sync_journal_related_accounts()
+    client_account = get_or_create_client_account(receipt.client_name)
+    treasury = None
+    if receipt.treasury_account_id:
+        treasury = ChartOfAccount.query.get(receipt.treasury_account_id)
+    if not treasury:
+        code = treasury_code_for_payment_method(receipt.payment_method)
+        treasury = get_account_by_code(code) or get_account_by_code("TRS-MAIN")
+    amount = as_float(receipt.amount)
+    entry_date = receipt.date or date.today().isoformat()
+    if is_journal_sourced_document(receipt.notes):
+        replace_auto_journals(f"REC-AUTO:{receipt.id}", [], commit=False)
+        _rewrite_source_journal(
+            receipt,
+            treasury.id if treasury else None,
+            client_account.id if client_account else None,
+            amount,
+            entry_date,
+            reference=receipt.document_number,
+            project_id=receipt.project_id,
+        )
+        db.session.commit()
+        return
+    marker = f"REC-AUTO:{receipt.id}"
+    client_account = get_or_create_client_account(receipt.client_name)
+    treasury = None
+    if receipt.treasury_account_id:
+        treasury = ChartOfAccount.query.get(receipt.treasury_account_id)
+    if not treasury:
+        code = treasury_code_for_payment_method(receipt.payment_method)
+        treasury = get_account_by_code(code) or get_account_by_code("TRS-MAIN")
+    payloads = []
+    amount = as_float(receipt.amount)
+    if client_account and treasury and amount > 0:
+        project = receipt.project
+        payloads.append({
+            "date": receipt.date or date.today().isoformat(),
+            "reference": receipt.document_number,
+            "journal_name": "يومية عامة",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - تحصيل {receipt.payment_method} من العميل {receipt.client_name}"
+            ),
+            "debit_account_id": treasury.id,
+            "credit_account_id": client_account.id,
+            "amount": round(amount, 2),
+            "project_id": receipt.project_id,
+            "cost_center": f"مشروع - {project.display_name}" if project else None,
+        })
+    replace_auto_journals(marker, payloads)
+
+
+def sync_supplier_payment_journal(payment):
+    sync_journal_related_accounts()
+    party_account = get_or_create_supplier_account(payment.supplier) if payment.supplier else None
+    treasury = None
+    if payment.treasury_account_id:
+        treasury = ChartOfAccount.query.get(payment.treasury_account_id)
+    if not treasury:
+        code = treasury_code_for_payment_method(payment.payment_method)
+        treasury = get_account_by_code(code) or get_account_by_code("TRS-MAIN")
+    amount = as_float(payment.amount)
+    entry_date = payment.date or date.today().isoformat()
+    if is_journal_sourced_document(payment.notes):
+        replace_auto_journals(f"PAY-AUTO:{payment.id}", [], commit=False)
+        _rewrite_source_journal(
+            payment,
+            party_account.id if party_account else None,
+            treasury.id if treasury else None,
+            amount,
+            entry_date,
+            reference=payment.document_number,
+            project_id=payment.project_id,
+        )
+        db.session.commit()
+        return
+    marker = f"PAY-AUTO:{payment.id}"
+    party_account = get_or_create_supplier_account(payment.supplier) if payment.supplier else None
+    treasury = None
+    if payment.treasury_account_id:
+        treasury = ChartOfAccount.query.get(payment.treasury_account_id)
+    if not treasury:
+        code = treasury_code_for_payment_method(payment.payment_method)
+        treasury = get_account_by_code(code) or get_account_by_code("TRS-MAIN")
+    payloads = []
+    amount = as_float(payment.amount)
+    if party_account and treasury and amount > 0:
+        project = payment.project
+        payloads.append({
+            "date": payment.date or date.today().isoformat(),
+            "reference": payment.document_number,
+            "journal_name": "يومية عامة",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - سداد {payment.payment_method} للمورد "
+                f"{payment.supplier.name if payment.supplier else ''}"
+            ).strip(),
+            "debit_account_id": party_account.id,
+            "credit_account_id": treasury.id,
+            "amount": round(amount, 2),
+            "project_id": payment.project_id,
+            "cost_center": f"مشروع - {project.display_name}" if project else None,
+        })
+    replace_auto_journals(marker, payloads)
+
+
+def payroll_slip_component_lines(slip):
+    """بنود كشف المرتب التي تظهر على حساب الموظف: إضافات دائنة واستقطاعات مدينة."""
+    specs = (
+        ("earned_salary", "الراتب", "credit", lambda item: item.earned_salary_value),
+        ("transport", "موصلات", "credit", lambda item: item.transport),
+        ("overtime", "اضافى", "credit", lambda item: item.overtime),
+        ("incentives", "منح", "credit", lambda item: item.incentives),
+        ("advances", "سلف", "debit", lambda item: item.advances),
+        ("daily_deduction_amount", "خصم باليومية", "debit", lambda item: item.daily_deduction_amount),
+        ("other_deductions", "خصم عام", "debit", lambda item: item.other_deductions),
+        ("delay_deduction", "خصم تأخير", "debit", lambda item: item.delay_deduction),
+        ("permission_deduction", "خصم استئذان", "debit", lambda item: item.permission_deduction),
+    )
+    lines = []
+    for key, label, side, getter in specs:
+        amount = round(as_float(getter(slip)), 2)
+        if amount <= 0:
+            continue
+        lines.append({"key": key, "label": label, "side": side, "amount": amount})
+    return lines
+
+
+def sync_payroll_slip_journal(slip, commit=True, check_period=True):
+    """كل بند في كشف المرتب ينزل حركة على حساب الموظف. صافي المصروف يبقى كما هو."""
+    marker = f"PAYROLL-AUTO:{slip.id}"
+    expense_account = get_account_by_code("EXP-SAL")
+    if expense_account is None:
+        ensure_core_accounting_accounts()
+        expense_account = get_account_by_code("EXP-SAL")
+    employee_account = get_or_create_employee_account(slip.employee) if slip.employee else None
+    lines = payroll_slip_component_lines(slip)
+    if not expense_account or not employee_account or not lines:
+        replace_auto_journals(marker, [], commit=commit, check_period=check_period)
+        return
+    name = slip.employee.display_name if slip.employee else ""
+    month = slip.period_month or ""
+    entry_date = slip.date or date.today().isoformat()
+    payloads = []
+    for line in lines:
+        if line["side"] == "credit":
+            debit_id, credit_id = expense_account.id, employee_account.id
+        else:
+            debit_id, credit_id = employee_account.id, expense_account.id
+        payloads.append({
+            "date": entry_date,
+            "reference": slip.document_number,
+            "journal_name": "المصاريف",
+            "status": "مرحل",
+            "description": f"{marker} - {line['label']} {name} عن شهر {month}".strip(),
+            "debit_account_id": debit_id,
+            "credit_account_id": credit_id,
+            "amount": line["amount"],
+            "project_id": None,
+            "cost_center": None,
+        })
+    replace_auto_journals(marker, payloads, commit=commit, check_period=check_period)
+
+
+def sync_employee_salary_payment_journal(payment):
+    """صرف المرتب من الخزنة: مدين حساب الموظف / دائن الخزنة. لا يمس مصروف المرتبات."""
+    sync_journal_related_accounts()
+    party_account = get_or_create_employee_account(payment.employee) if payment.employee else None
+    treasury = None
+    if payment.treasury_account_id:
+        treasury = ChartOfAccount.query.get(payment.treasury_account_id)
+    if not treasury:
+        code = treasury_code_for_payment_method(payment.payment_method)
+        treasury = get_account_by_code(code) or get_account_by_code("TRS-MAIN")
+    amount = as_float(payment.amount)
+    entry_date = payment.date or date.today().isoformat()
+    if is_journal_sourced_document(payment.notes):
+        replace_auto_journals(f"ESAL-AUTO:{payment.id}", [], commit=False)
+        _rewrite_source_journal(
+            payment,
+            party_account.id if party_account else None,
+            treasury.id if treasury else None,
+            amount,
+            entry_date,
+            reference=payment.document_number,
+            project_id=None,
+        )
+        db.session.commit()
+        return
+    marker = f"ESAL-AUTO:{payment.id}"
+    payloads = []
+    if party_account and treasury and amount > 0:
+        payloads.append({
+            "date": entry_date,
+            "reference": payment.document_number,
+            "journal_name": "يومية عامة",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - صرف مرتب {payment.payment_method} للموظف "
+                f"{payment.employee.display_name if payment.employee else ''}"
+            ).strip(),
+            "debit_account_id": party_account.id,
+            "credit_account_id": treasury.id,
+            "amount": round(amount, 2),
+            "project_id": None,
+            "cost_center": None,
+        })
+    replace_auto_journals(marker, payloads)
+
+
+def sync_sales_trip_journal(trip):
+    """نقلة المبيعات: مدين العميل / دائن إيرادات النقل. العهد تُخصم من العميل نقدًا، ولا تُرحَّل على السائق."""
+    sync_journal_related_accounts()
+    get_or_create_driver_account(trip.driver_name)
+    trip.recalculate()
+    marker = f"SALE-AUTO:{trip.id}"
+    adv_marker = f"SALE-ADV-AUTO:{trip.id}"
+    client_account = get_or_create_client_account((trip.client_name or "").strip() or "عملاء النقل")
+    revenue_account = get_account_by_code("REV-TRP") or get_account_by_code("REV-WRK")
+    amount = round(as_float(trip.total_amount), 2)
+    advances = round(as_float(trip.advances), 2)
+    payloads = []
+    if client_account and revenue_account and amount > 0:
+        payloads.append({
+            "date": trip.date or date.today().isoformat(),
+            "reference": trip.document_number,
+            "journal_name": "يومية عامة",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - مبيعات نقلة {trip.document_number} "
+                f"{trip.notes or trip.trip_type or ''}"
+            ).strip(),
+            "debit_account_id": client_account.id,
+            "credit_account_id": revenue_account.id,
+            "amount": amount,
+            "project_id": trip.project_id,
+            "cost_center": None,
+        })
+    replace_auto_journals(marker, payloads)
+
+    adv_payloads = []
+    treasury = get_account_by_code("TRS-MAIN")
+    if client_account and treasury and advances > 0:
+        adv_payloads.append({
+            "date": trip.date or date.today().isoformat(),
+            "reference": trip.document_number,
+            "journal_name": "يومية عامة",
+            "status": "مرحل",
+            "description": (
+                f"{adv_marker} - عهدة عميل على نقلة {trip.document_number} "
+                f"{(trip.client_name or '').strip()}"
+            ).strip(),
+            "debit_account_id": treasury.id,
+            "credit_account_id": client_account.id,
+            "amount": advances,
+            "project_id": trip.project_id,
+            "cost_center": None,
+        })
+    replace_auto_journals(adv_marker, adv_payloads)
+
+
+def document_journal_markers(entity_type, entity_id):
+    mapping = {
+        "progress_payment": [f"PP-AUTO:{entity_id}"],
+        "subcontractor_payment": [f"SPAY-AUTO:{entity_id}"],
+        "estimation": [f"EST-AUTO:{entity_id}"],
+        "purchase_order": [f"PO-JRN-AUTO:{entity_id}"],
+        "inventory": [f"INV-AUTO:{entity_id}"],
+        "custody": [f"CUST-AUTO:{entity_id}"],
+        "labor": [f"LAB-AUTO:{entity_id}"],
+        "equipment": [f"EQP-AUTO:{entity_id}", f"EQP-OP-AUTO:{entity_id}"],
+        "equipment_maintenance": [f"EQP-MNT-AUTO:{entity_id}"],
+        "driver": [f"DRV-WORK-AUTO:{entity_id}", f"DRV-DED-AUTO:{entity_id}", f"DRV-PAY-AUTO:{entity_id}"],
+        "sales_trip": [f"SALE-AUTO:{entity_id}", f"SALE-ADV-AUTO:{entity_id}"],
+        "client_receipt": [f"REC-AUTO:{entity_id}"],
+        "supplier_payment": [f"PAY-AUTO:{entity_id}"],
+        "payroll_slip": [f"PAYROLL-AUTO:{entity_id}"],
+        "employee_salary_payment": [f"ESAL-AUTO:{entity_id}"],
+        "retention_release": [f"RETREL-AUTO:{entity_id}"],
+    }
+    return mapping.get(entity_type, [])
+
+
+def void_document_journals(entity_type, entity_id, commit=True, check_period=True):
+    for marker in document_journal_markers(entity_type, entity_id):
+        replace_auto_journals(marker, [], commit=False, check_period=check_period)
+    if commit:
+        db.session.commit()
+
+
+AUTO_JOURNAL_ENTITY_PREFIXES = (
+    ("PP-AUTO:", "progress_payment"),
+    ("SPAY-AUTO:", "subcontractor_payment"),
+    ("EST-AUTO:", "estimation"),
+    ("PO-JRN-AUTO:", "purchase_order"),
+    ("PO-AUTO:", "purchase_order"),
+    ("INV-AUTO:", "inventory"),
+    ("CUST-AUTO:", "custody"),
+    ("LAB-AUTO:", "labor"),
+    ("EQP-OP-AUTO:", "equipment"),
+    ("EQP-MNT-AUTO:", "equipment_maintenance"),
+    ("EQP-AUTO:", "equipment"),
+    ("DRV-WORK-AUTO:", "driver"),
+    ("DRV-DED-AUTO:", "driver"),
+    ("DRV-PAY-AUTO:", "driver"),
+    ("SALE-ADV-AUTO:", "sales_trip"),
+    ("SALE-AUTO:", "sales_trip"),
+    ("REC-AUTO:", "client_receipt"),
+    ("PAY-AUTO:", "supplier_payment"),
+    ("PAYROLL-AUTO:", "payroll_slip"),
+    ("ESAL-AUTO:", "employee_salary_payment"),
+    ("RETREL-AUTO:", "retention_release"),
+)
+
+
+def auto_journal_source(entry):
+    description = getattr(entry, "description", None) or ""
+    for prefix, entity_type in AUTO_JOURNAL_ENTITY_PREFIXES:
+        token = prefix
+        if token not in description:
+            continue
+        tail = description.split(token, 1)[1]
+        digits = ""
+        for char in tail:
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        if digits:
+            return entity_type, int(digits)
+    return None, None
+
+
+def _delete_document_dependents(entity_type, entity_id):
+    if entity_type == "progress_payment":
+        ProgressPaymentItem.query.filter_by(progress_payment_id=entity_id).delete()
+        for advance in SubcontractorPayment.query.filter_by(progress_payment_id=entity_id).all():
+            advance.progress_payment_id = None
+    elif entity_type == "estimation":
+        EstimationItem.query.filter_by(estimation_id=entity_id).delete()
+    elif entity_type == "equipment":
+        for row in EquipmentMaintenance.query.filter_by(equipment_id=entity_id).all():
+            replace_auto_journals(f"EQP-MNT-AUTO:{row.id}", [], commit=False)
+            db.session.delete(row)
+    elif entity_type == "purchase_order":
+        for tx in _po_auto_inventory_rows(entity_id):
+            replace_auto_journals(f"INV-AUTO:{tx.id}", [], commit=False)
+            db.session.delete(tx)
+        PurchaseOrderItem.query.filter_by(purchase_order_id=entity_id).delete()
+    DocumentAttachment.query.filter_by(entity_type=entity_type, entity_id=entity_id).delete()
+
+
+DOCUMENT_MODEL_MAP = {
+    "progress_payment": ProgressPayment,
+    "subcontractor_payment": SubcontractorPayment,
+    "estimation": Estimation,
+    "purchase_order": PurchaseOrder,
+    "inventory": InventoryTransaction,
+    "custody": CustodySettlement,
+    "labor": LaborEntry,
+    "equipment": Equipment,
+    "driver": DriverCompensationEntry,
+    "sales_trip": SalesTrip,
+    "client_receipt": ClientReceipt,
+    "supplier_payment": SupplierPayment,
+    "payroll_slip": PayrollSlip,
+    "employee_salary_payment": EmployeeSalaryPayment,
+    "retention_release": SubcontractorRetentionRelease,
+}
+
+
+def purge_operating_document(entity_type, entity_id):
+    """يحذف المستند وقيوده معًا حتى تختفي الحركة من الحسابين في نفس العملية."""
+    model = DOCUMENT_MODEL_MAP.get(entity_type)
+    if not model:
+        raise ValueError("نوع مستند غير معروف")
+    item = model.query.get(entity_id)
+    if item is None:
+        return None
+    if entity_type == "inventory" and is_purchase_order_inventory(item):
+        raise ValueError("حركة المخزون التابعة لأمر شراء تُحذف مع أمر الشراء نفسه")
+    if entity_type == "purchase_order":
+        _assert_receipt_reduction_allowed(item, {})
+
+    entry_date = getattr(item, "date", None)
+    if entry_date:
+        assert_period_open(entry_date)
+
+    source_journal = None
+    if hasattr(item, "notes"):
+        source_id = journal_id_from_source_note(item.notes)
+        if source_id:
+            source_journal = JournalEntry.query.get(source_id)
+            if source_journal:
+                if normalize_journal_status(source_journal.status) == "مرحل":
+                    raise ValueError(JOURNAL_SOURCED_LOCK_MESSAGE)
+                assert_period_open(source_journal.date)
+
+    void_document_journals(entity_type, entity_id, commit=False)
+    if source_journal is not None:
+        db.session.delete(source_journal)
+
+    _delete_document_dependents(entity_type, entity_id)
+    db.session.delete(item)
+    db.session.commit()
+    return item
+
+
+def project_cost_center_label(project):
+    if not project:
+        return None
+    return f"مشروع - {project.display_name}"
+
+
+def resolve_journal_cost_center(project_id):
+    project_id = as_int(project_id) or None
+    if not project_id:
+        return None, None
+    project = Project.query.get(project_id)
+    if not project:
+        return None, None
+    return project.id, project_cost_center_label(project)
+
+
+def resolve_journal_equipment(equipment_id):
+    equipment_id = as_int(equipment_id) or None
+    if not equipment_id:
+        return None
+    return Equipment.query.get(equipment_id)
+
+
+def manual_project_journal_totals(project):
+    """قيود اليومية اليدوية المرحلة على المشروع: مصروف وإيراد من غير قيود المستندات التلقائية."""
+    expense = 0.0
+    revenue = 0.0
+    revenue_categories = {"الإيرادات", "فروق أسعار"}
+    for entry in JournalEntry.query.filter_by(project_id=project.id, status="مرحل").all():
+        if is_auto_journal_entry(entry):
+            continue
+        amount = as_float(entry.amount)
+        debit = entry.debit_account
+        credit = entry.credit_account
+        if debit and (debit.category or "") == "المصروفات":
+            expense += amount
+        if credit and (credit.category or "") == "المصروفات":
+            expense -= amount
+        if credit and (credit.category or "") in revenue_categories:
+            revenue += amount
+        if debit and (debit.category or "") in revenue_categories:
+            revenue -= amount
+    return {
+        "journal_expense": round(expense, 2),
+        "journal_revenue": round(revenue, 2),
+    }
+
+
+def project_revenue_and_result(project, breakdown=None):
+    """إيراد المشروع (مستخلص عميل أو مقايسة/عقد + قيود الإيراد اليدوية) مقابل التكلفة وصافي الربح."""
+    breakdown = breakdown or build_project_cost_breakdown(project)
+    billed_value = round(sum(
+        as_float(item.total_value)
+        for item in ProgressPayment.query.filter_by(project_id=project.id, subcontractor_id=None).all()
+    ), 2)
+    approved_value = round(sum(
+        as_float(item.final_value)
+        for item in Estimation.query.filter_by(project_id=project.id).all()
+        if (item.status or "") == "معتمدة"
+    ), 2)
+    contract_value = as_float(project.contract_value)
+    if billed_value > 0:
+        client_value = billed_value
+        value_source = "مستخلصات العميل"
+    elif approved_value > 0:
+        client_value = approved_value
+        value_source = "مقايسات معتمدة (مرجع)"
+    else:
+        client_value = contract_value
+        value_source = "قيمة العقد"
+    journal_revenue = as_float(breakdown.get("journal_revenue"))
+    total_revenue = round(client_value + journal_revenue, 2)
+    total_cost = as_float(breakdown.get("total_cost"))
+    profit = round(total_revenue - total_cost, 2)
+    margin = round((profit / total_revenue * 100.0), 2) if total_revenue else 0.0
+    return {
+        "billed_value": billed_value,
+        "approved_value": approved_value,
+        "contract_value": contract_value,
+        "client_value": client_value,
+        "value_source": value_source,
+        "journal_revenue": journal_revenue,
+        "total_revenue": total_revenue,
+        "total_cost": total_cost,
+        "profit": profit,
+        "margin": margin,
+        "result_label": "ربح" if profit >= 0 else "خسارة",
+    }
+
+
+def build_project_cost_breakdown(project):
+    """التكلفة الفعلية للمشروع من المستندات التشغيلية (نفس مصدر ربحية المقايسات)."""
+    subcontractor_cost = round(sum(
+        as_float(item.total_value)
+        for item in ProgressPayment.query.filter_by(project_id=project.id).all()
+        if item.subcontractor_id
+    ), 2)
+    material_cost = round(sum(
+        as_float(item.total_value)
+        for item in PurchaseOrder.query.filter_by(project_id=project.id).all()
+        if purchase_order_is_received(item)
+    ), 2)
+
+    custody_cost = 0.0
+    for settlement in CustodySettlement.query.filter_by(project_id=project.id).all():
+        if get_custody_operation_type(settlement) == "تسوية عهدة":
+            custody_cost += get_custody_settlement_amount(settlement)
+    custody_cost = round(custody_cost, 2)
+
+    driver_cost = round(sum(
+        as_float(item.gross_amount)
+        for item in DriverCompensationEntry.query.filter_by(project_id=project.id).all()
+    ), 2)
+    labor_cost = round(sum(
+        as_float(item.amount)
+        for item in LaborEntry.query.filter_by(project_id=project.id).all()
+    ), 2)
+    equipment_cost = round(sum(
+        as_float(item.operating_cost) + as_float(item.maintenance)
+        for item in Equipment.query.filter_by(project_id=project.id).all()
+    ), 2)
+
+    journal_totals = manual_project_journal_totals(project)
+    other_cost = journal_totals["journal_expense"]
+    direct_cost = round(
+        subcontractor_cost + material_cost + custody_cost + driver_cost + labor_cost + equipment_cost + other_cost, 2
+    )
+    admin_allocation = round(direct_cost * as_float(project.admin_percentage) / 100.0, 2)
+
+    return {
+        "subcontractor_cost": subcontractor_cost,
+        "material_cost": material_cost,
+        "custody_cost": custody_cost,
+        "driver_cost": driver_cost,
+        "labor_cost": labor_cost,
+        "equipment_cost": equipment_cost,
+        "other_cost": other_cost,
+        "journal_revenue": journal_totals["journal_revenue"],
+        "direct_cost": direct_cost,
+        "admin_allocation": admin_allocation,
+        "total_cost": round(direct_cost + admin_allocation, 2),
+    }
+
+
+def list_driver_records():
+    """السواقين المسجلين مع أكواد حساباتهم لاستخدامها في القوائم."""
+    records = {}
+    for account in ChartOfAccount.query.filter_by(category="السواقين").all():
+        code = (account.code or "").strip()
+        if (code or "").upper().startswith("CAT-"):
+            continue
+        label = (account.name or "").strip()
+        if label.startswith("سائق - "):
+            label = label[7:].strip()
+        if not label or label == "السواقين":
+            continue
+        records[label.casefold()] = {"name": label, "code": code}
+    for entry in DriverCompensationEntry.query.order_by(DriverCompensationEntry.id.desc()).all():
+        name = (entry.driver_name or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        current = records.get(key) or {"name": name, "code": ""}
+        if (entry.driver_code or "").strip() and not current.get("code"):
+            current["code"] = entry.driver_code.strip()
+        records[key] = current
+    for value in SalesTrip.query.with_entities(SalesTrip.driver_name).all():
+        name = (value[0] or "").strip()
+        if name:
+            records.setdefault(name.casefold(), {"name": name, "code": ""})
+    return sorted(records.values(), key=lambda item: item["name"].casefold())
+
+
+def list_driver_names():
+    return [item["name"] for item in list_driver_records()]
+
+
+def list_equipment_names():
+    names = set()
+    for item in Equipment.query.order_by(Equipment.name).all():
+        for raw in (item.name, getattr(item, "code", None), getattr(item, "plate_number", None)):
+            label = (raw or "").strip()
+            if label:
+                names.add(label)
+    for model, column in (
+        (SalesTrip, SalesTrip.tractor_number),
+        (SalesTrip, SalesTrip.trailer_number),
+        (DriverCompensationEntry, DriverCompensationEntry.tractor_number),
+    ):
+        for value in model.query.with_entities(column).all():
+            label = (value[0] or "").strip()
+            if label:
+                names.add(label)
+    return sorted(names, key=lambda item: item.casefold())
+
+
+def list_client_names():
+    names = {(project.client_name or "").strip() for project in Project.query.all()}
+    names.update({(item.client_name or "").strip() for item in Estimation.query.all()})
+    names.update({(item.client_name or "").strip() for item in ClientReceipt.query.all()})
+    names.update({(item.client_name or "").strip() for item in SalesTrip.query.all()})
+    for account in ChartOfAccount.query.filter_by(category="العملاء").all():
+        label = (account.name or "").strip()
+        if label.startswith("عميل - "):
+            label = label[7:].strip()
+        if label:
+            names.add(label)
+    unique = {}
+    for name in names:
+        clean = normalize_client_name(name)
+        if clean and clean.casefold() not in unique:
+            unique[clean.casefold()] = clean
+    return sorted(unique.values(), key=lambda item: item.casefold())
+
+
+def equipment_display_code(item):
+    return (getattr(item, "code", None) or "").strip() or f"EQP-{item.id:04d}"
+
+
+def normalize_equipment_key(value):
+    return " ".join((value or "").strip().casefold().split())
+
+
+def equipment_identity_keys(item):
+    keys = set()
+    for raw in (
+        item.name,
+        getattr(item, "code", None),
+        getattr(item, "plate_number", None),
+        getattr(item, "chassis_number", None),
+        f"EQP-{item.id:04d}",
+    ):
+        key = normalize_equipment_key(raw)
+        if key:
+            keys.add(key)
+    return keys
+
+
+def match_equipment_from_texts(texts, equipment_list):
+    blobs = [normalize_equipment_key(text) for text in texts if text]
+    blobs = [blob for blob in blobs if blob]
+    if not blobs:
+        return None
+    exact = []
+    contained = []
+    for item in equipment_list:
+        for key in equipment_identity_keys(item):
+            if not key:
+                continue
+            for blob in blobs:
+                if key == blob:
+                    exact.append(item)
+                    break
+                if len(key) >= 3 and (key in blob or blob in key):
+                    contained.append(item)
+                    break
+            else:
+                continue
+            break
+    if exact:
+        return exact[0]
+    if contained:
+        return contained[0]
+    return None
+
+
+def infer_equipment_expense_kind(*texts):
+    blob = " ".join(str(text or "") for text in texts)
+    mapping = [
+        ("فلاتر", ("فلتر", "فلاتر")),
+        ("بطاريات", ("بطارية", "بطاريات")),
+        ("إطارات", ("كاوتش", "كوتش", "إطار", "اطار", "إطارات")),
+        ("سولار", ("سولار", "ديزل", "وقود", "بنزين", "سولر")),
+        ("رسوم وترخيص", ("ترخيص", "رخصة", "رسوم")),
+        ("قطع غيار", ("قطعة", "قطع غيار", "خرطوم")),
+        ("زيوت", ("زيت", "زيوت")),
+        ("إصلاح", ("إصلاح", "اصلاح", "فحص")),
+        ("صيانة", ("صيانة",)),
+    ]
+    for kind, words in mapping:
+        if any(word in blob for word in words):
+            return kind
+    return "أخرى"
+
+
+def _equipment_expense_row(equipment, date_value, kind, description, quantity, unit_price, amount, source, source_ref="", log_id=None, can_delete=False, can_edit=False, vendor_name="", treasury_account_id=None, notes="", source_kind="", source_id=None):
+    qty = as_float(quantity) or 1.0
+    price = as_float(unit_price)
+    total = as_float(amount)
+    if total <= 0 and qty > 0 and price > 0:
+        total = round(qty * price, 2)
+    if price <= 0 and qty > 0 and total > 0:
+        price = round(total / qty, 2)
+    return {
+        "date": date_value or "",
+        "equipment_code": equipment_display_code(equipment),
+        "equipment_name": equipment.name,
+        "kind": kind or "أخرى",
+        "description": (description or "").strip() or "-",
+        "quantity": round(qty, 2),
+        "unit_price": round(price, 2),
+        "amount": round(total, 2),
+        "source": source,
+        "source_ref": source_ref or "",
+        "log_id": log_id,
+        "can_delete": can_delete,
+        "can_edit": can_edit,
+        "vendor_name": vendor_name or "",
+        "treasury_account_id": treasury_account_id,
+        "notes": notes or "",
+        "source_kind": source_kind or "",
+        "source_id": source_id,
+        "equipment_id": equipment.id,
+    }
+
+
+def collect_equipment_expense_rows(items=None):
+    items = items if items is not None else Equipment.query.order_by(Equipment.name).all()
+    by_id = {item.id: item for item in items}
+    rows = []
+    po_ids_with_equipment_issue = set()
+
+    for log in EquipmentMaintenance.query.order_by(EquipmentMaintenance.date.asc(), EquipmentMaintenance.id.asc()).all():
+        equipment = by_id.get(log.equipment_id) or getattr(log, "equipment", None)
+        if not equipment:
+            continue
+        qty = as_float(log.quantity) or 1.0
+        price = as_float(log.unit_price)
+        amount = as_float(log.amount)
+        journal_sourced = is_journal_sourced_document(log.notes) or (log.source_type or "") == "يومية"
+        source_label = "يومية" if journal_sourced else "خزنة"
+        source_ref = (log.vendor_name or "") or (log.treasury_account.code if log.treasury_account else "")
+        if journal_sourced:
+            source_ref = log.document_number
+        rows.append(_equipment_expense_row(
+            equipment,
+            log.date,
+            log.work_type or infer_equipment_expense_kind(log.description, log.notes, log.work_type),
+            log.description or log.notes,
+            qty,
+            price,
+            amount,
+            source_label,
+            source_ref=source_ref,
+            log_id=log.id,
+            can_delete=True,
+            can_edit=True,
+            vendor_name=log.vendor_name or "",
+            treasury_account_id=log.treasury_account_id,
+            notes=log.notes or "",
+            source_kind="journal" if journal_sourced else "treasury",
+            source_id=log.id,
+        ))
+
+    for tx in InventoryTransaction.query.order_by(InventoryTransaction.date.asc(), InventoryTransaction.id.asc()).all():
+        if normalize_inventory_type(tx.transaction_type) != INV_TYPE_OUT and (tx.transaction_type or "") != "سحب":
+            continue
+        equipment = by_id.get(tx.equipment_id) if tx.equipment_id else None
+        if not equipment:
+            equipment = match_equipment_from_texts(
+                [tx.recipient_name, tx.notes, tx.material_name, tx.destination_warehouse],
+                items,
+            )
+        if not equipment:
+            continue
+        amount = round(as_float(tx.quantity) * as_float(tx.unit_cost), 2)
+        if amount <= 0:
+            continue
+        notes = tx.notes or ""
+        if "PO-AUTO:" in notes:
+            marker = notes.split("PO-AUTO:", 1)[1]
+            po_id = as_int(marker.split(":")[0])
+            if po_id:
+                po_ids_with_equipment_issue.add(po_id)
+        rows.append(_equipment_expense_row(
+            equipment,
+            tx.date,
+            infer_equipment_expense_kind(tx.material_name, tx.notes),
+            tx.material_name or tx.notes,
+            tx.quantity,
+            tx.unit_cost,
+            amount,
+            "مخزن",
+            source_ref=tx.warehouse_name or "",
+            can_delete=bool(tx.equipment_id),
+            source_kind="inventory",
+            source_id=tx.id,
+        ))
+
+    for order in PurchaseOrder.query.order_by(PurchaseOrder.date.asc(), PurchaseOrder.id.asc()).all():
+        if order.id in po_ids_with_equipment_issue:
+            continue
+        line_names = [line.item_name for line in (order.line_items or []) if line.item_name]
+        equipment = by_id.get(order.equipment_id) if order.equipment_id else None
+        if not equipment:
+            equipment = match_equipment_from_texts(
+                [order.notes, order.item_name, *line_names],
+                items,
+            )
+        if not equipment:
+            continue
+        qty = as_float(order.quantity)
+        price = as_float(order.unit_price)
+        amount = as_float(order.total_value)
+        if order.line_items:
+            qty = sum(as_float(line.quantity) for line in order.line_items) or qty
+            amount = sum(as_float(line.value) for line in order.line_items) or amount
+            if qty > 0 and amount > 0:
+                price = amount / qty
+        if amount <= 0:
+            continue
+        rows.append(_equipment_expense_row(
+            equipment,
+            order.date,
+            infer_equipment_expense_kind(order.item_name, order.notes, *line_names),
+            order.items_label or order.notes,
+            qty or 1,
+            price,
+            amount,
+            "أمر شراء",
+            source_ref=order.document_number,
+            can_delete=bool(order.equipment_id),
+            source_kind="purchase",
+            source_id=order.id,
+        ))
+
+    for settlement in CustodySettlement.query.order_by(CustodySettlement.date.asc(), CustodySettlement.id.asc()).all():
+        if (settlement.entity_type or "").strip() != "معدة":
+            continue
+        if get_custody_operation_type(settlement) != "تسوية عهدة":
+            continue
+        equipment = match_equipment_from_texts([settlement.entity_name, settlement.notes, settlement.expense_item], items)
+        if not equipment:
+            continue
+        amount = get_custody_settlement_amount(settlement)
+        if amount <= 0:
+            continue
+        rows.append(_equipment_expense_row(
+            equipment,
+            settlement.date,
+            infer_equipment_expense_kind(settlement.expense_item, settlement.notes, settlement.expense_nature),
+            settlement.expense_item or settlement.notes,
+            1,
+            amount,
+            amount,
+            "عهدة",
+            source_ref=settlement.reference or f"CUST-{settlement.id:06d}",
+        ))
+
+    rows.sort(key=lambda row: (row["date"] or "", row["equipment_name"], row["source"]))
+    return rows
+
+
+def equipment_expense_rows(equipment, collected=None):
+    collected = collected if collected is not None else collect_equipment_expense_rows()
+    return [row for row in collected if row["equipment_id"] == equipment.id]
+
+
+def equipment_oil_status(item):
+    current = float(as_float(getattr(item, "current_meter", 0)))
+    last = float(as_float(getattr(item, "last_oil_meter", 0)))
+    interval = float(as_float(getattr(item, "oil_interval", 0)) or 10000)
+    tolerance = float(as_float(getattr(item, "oil_tolerance", 0)))
+    if tolerance <= 0:
+        tolerance = 1000
+    next_meter = round(last + interval, 2) if interval > 0 else 0.0
+    remaining = round(next_meter - current, 2) if next_meter else None
+    unit = (getattr(item, "meter_unit", None) or "كم").strip() or "كم"
+    if remaining is None:
+        alert, css = "غير محدد", "secondary"
+    elif remaining <= 0:
+        alert, css = "حان التغيير", "danger"
+    elif remaining <= tolerance:
+        alert, css = "قرب التغيير", "warning"
+    else:
+        alert, css = "ساري", "success"
+    return {
+        "current_meter": current,
+        "last_oil_meter": last,
+        "oil_interval": interval,
+        "oil_tolerance": tolerance,
+        "next_meter": next_meter,
+        "remaining": remaining,
+        "alert": alert,
+        "class": css,
+        "unit": unit,
+    }
+
+
+def equipment_performance(net, revenue):
+    if net < 0:
+        return {"label": "خسارة", "class": "danger"}
+    if revenue > 0 and (net / revenue) >= 0.20:
+        return {"label": "ربح ممتاز", "class": "success"}
+    if revenue > 0 or net > 0:
+        return {"label": "ربح متوسط", "class": "warning"}
+    return {"label": "ربح متوسط", "class": "secondary"}
+
+
+def trip_site_label(trip):
+    origin = (trip.origin or "").strip()
+    dest = (trip.destination or "").strip()
+    if origin and dest:
+        return f"{origin} → {dest}"
+    return origin or dest or (trip.notes or "").strip() or (trip.project.display_name if trip.project else "-")
+
+
+def trip_equipment_shares(trip):
+    dump = as_float(trip.dump_cubage)
+    trailer = as_float(trip.trailer_cubage)
+    price = as_float(trip.unit_price)
+    total = as_float(trip.total_amount)
+    tractor_no = (trip.tractor_number or "").strip()
+    trailer_no = (trip.trailer_number or "").strip()
+    tractor_amt = 0.0
+    trailer_amt = 0.0
+    if dump > 0 or trailer > 0:
+        tractor_amt = round(dump * price, 2) if tractor_no else 0.0
+        trailer_amt = round(trailer * price, 2) if trailer_no else 0.0
+        split = tractor_amt + trailer_amt
+        if split > 0 and total > 0 and abs(split - total) > 0.01:
+            tractor_amt = round(total * (tractor_amt / split), 2)
+            trailer_amt = round(total - tractor_amt, 2) if trailer_no else 0.0
+    elif tractor_no and trailer_no:
+        tractor_amt = round(total / 2.0, 2)
+        trailer_amt = round(total - tractor_amt, 2)
+    elif tractor_no:
+        tractor_amt = total
+    elif trailer_no:
+        trailer_amt = total
+    rows = []
+    if tractor_no:
+        rows.append({"label": tractor_no, "role": "قلاب", "amount": tractor_amt})
+    if trailer_no:
+        rows.append({"label": trailer_no, "role": "مقطورة", "amount": trailer_amt})
+    return rows
+
+
+def equipment_works_rows(equipment, trips=None):
+    keys = equipment_identity_keys(equipment)
+    trips = trips if trips is not None else SalesTrip.query.order_by(SalesTrip.date.asc(), SalesTrip.id.asc()).all()
+    rows = []
+    for trip in trips:
+        for share in trip_equipment_shares(trip):
+            if normalize_equipment_key(share["label"]) in keys and as_float(share["amount"]) > 0:
+                rows.append({
+                    "date": trip.date or "",
+                    "equipment_code": equipment_display_code(equipment),
+                    "equipment_name": equipment.name,
+                    "role": share["role"],
+                    "site": trip_site_label(trip),
+                    "client_name": trip.client_name or "",
+                    "voucher": trip.document_number,
+                    "amount": round(as_float(share["amount"]), 2),
+                    "trip_id": trip.id,
+                    "equipment_id": equipment.id,
+                    "origin": trip.origin or "",
+                    "destination": trip.destination or "",
+                    "dump_cubage": float(as_float(trip.dump_cubage)),
+                    "trailer_cubage": float(as_float(trip.trailer_cubage)),
+                    "unit_price": float(as_float(trip.unit_price)),
+                    "voucher_number": trip.voucher_number or "",
+                    "driver_name": trip.driver_name or "",
+                })
+    return rows
+
+
+def equipment_license_status(item, today=None):
+    today = today or date.today()
+    raw = (getattr(item, "license_expiry", None) or "").strip()
+    expiry = None
+    if raw:
+        try:
+            expiry = date.fromisoformat(raw[:10])
+        except ValueError:
+            expiry = None
+    if not expiry:
+        return {"label": "غير محدد", "class": "secondary", "days": None, "expiry": ""}
+    days = (expiry - today).days
+    if days < 0:
+        return {"label": "منتهي", "class": "danger", "days": days, "expiry": expiry.isoformat()}
+    if days <= 7:
+        return {"label": "ينتهي خلال أسبوع", "class": "danger", "days": days, "expiry": expiry.isoformat()}
+    if days <= LICENSE_WARN_DAYS:
+        return {"label": "ينتهي خلال شهر", "class": "warning", "days": days, "expiry": expiry.isoformat()}
+    return {"label": "ساري", "class": "success", "days": days, "expiry": expiry.isoformat()}
+
+
+def equipment_profit_row(item, trips=None, logs=None, expenses=None):
+    works = equipment_works_rows(item, trips=trips)
+    revenue = round(sum(row["amount"] for row in works), 2)
+    log_rows = logs if logs is not None else list(getattr(item, "maintenance_logs", None) or [])
+    log_cost = round(sum(as_float(log.amount) for log in log_rows), 2)
+    expense_rows = expenses if expenses is not None else equipment_expense_rows(item)
+    opex = round(sum(as_float(row["amount"]) for row in expense_rows), 2)
+    operating = as_float(item.operating_cost)
+    header_maint = as_float(item.maintenance)
+    purchase = as_float(item.purchase_cost)
+    running_cost = opex
+    result = round(revenue - purchase - running_cost, 2)
+    license_status = equipment_license_status(item)
+    oil = equipment_oil_status(item)
+    performance = equipment_performance(result, revenue)
+    status = (getattr(item, "status", None) or "تعمل بالموقع").strip() or "تعمل بالموقع"
+    return {
+        "equipment": item,
+        "code": equipment_display_code(item),
+        "plate_number": (getattr(item, "plate_number", None) or "").strip() or "-",
+        "vehicle_type": (getattr(item, "vehicle_type", None) or "").strip() or "-",
+        "chassis_number": (getattr(item, "chassis_number", None) or "").strip() or "-",
+        "status": status,
+        "purchase_cost": purchase,
+        "operating_cost": operating,
+        "header_maintenance": header_maint,
+        "log_maintenance": log_cost,
+        "running_cost": running_cost,
+        "opex": opex,
+        "revenue": revenue,
+        "result": result,
+        "net_label": "صافي ربح" if result >= 0 else "صافي خسارة",
+        "recovery": round(revenue - purchase, 2),
+        "works": works,
+        "expenses": expense_rows,
+        "license": license_status,
+        "oil": oil,
+        "performance": performance,
+        "profitable": result >= 0,
+        "logs": log_rows,
+    }
+
+
+def build_equipment_cycle_data():
+    items = Equipment.query.order_by(Equipment.name).all()
+    trips = SalesTrip.query.order_by(SalesTrip.date.asc(), SalesTrip.id.asc()).all()
+    logs_by = defaultdict(list)
+    for log in EquipmentMaintenance.query.order_by(EquipmentMaintenance.date.desc(), EquipmentMaintenance.id.desc()).all():
+        logs_by[log.equipment_id].append(log)
+    expenses = collect_equipment_expense_rows(items)
+    expenses_by = defaultdict(list)
+    for row in expenses:
+        expenses_by[row["equipment_id"]].append(row)
+    rows = []
+    for item in items:
+        snapshot = equipment_profit_row(
+            item,
+            trips=trips,
+            logs=logs_by.get(item.id, []),
+            expenses=expenses_by.get(item.id, []),
+        )
+        last = snapshot["logs"][0] if snapshot["logs"] else None
+        snapshot["last_maintenance"] = last.date if last else ""
+        snapshot["next_due"] = (last.next_due if last else "") or ""
+        rows.append(snapshot)
+    return rows
+
+
+def build_equipment_cycle_bundle(rows=None):
+    rows = rows if rows is not None else build_equipment_cycle_data()
+    works = []
+    expenses = []
+    tracking = []
+    for row in rows:
+        works.extend(row["works"])
+        expenses.extend(row["expenses"])
+        tracking.append(row)
+    works.sort(key=lambda item: (item["date"] or "", item["equipment_name"]))
+    expenses.sort(key=lambda item: (item["date"] or "", item["equipment_name"]))
+    return {
+        "rows": rows,
+        "works": works,
+        "expenses": expenses,
+        "tracking": tracking,
+        "totals": {
+            "purchase": round(sum(row["purchase_cost"] for row in rows), 2),
+            "running": round(sum(row["running_cost"] for row in rows), 2),
+            "revenue": round(sum(row["revenue"] for row in rows), 2),
+            "result": round(sum(row["result"] for row in rows), 2),
+        },
+    }
+
+
+def sync_equipment_maintenance_journal(row):
+    if is_journal_sourced_document(getattr(row, "notes", None)) or (getattr(row, "source_type", None) or "") == "يومية":
+        return
+    sync_journal_related_accounts()
+    marker = f"EQP-MNT-AUTO:{row.id}"
+    expense_account = get_account_by_code("EXP-EQP") or get_account_by_code("EXP-OTH")
+    treasury = ChartOfAccount.query.get(row.treasury_account_id) if row.treasury_account_id else None
+    if not treasury:
+        treasury = get_account_by_code("LIB-ACR")
+    amount = as_float(row.amount)
+    payloads = []
+    if expense_account and treasury and amount > 0:
+        equipment = row.equipment
+        payloads.append({
+            "date": row.date or date.today().isoformat(),
+            "reference": f"EQP-MNT-{row.id:06d}",
+            "journal_name": "المصاريف",
+            "status": "مرحل",
+            "description": (
+                f"{marker} - صيانة معدة {(equipment.name if equipment else '')} "
+                f"{row.work_type or ''} {row.description or ''}"
+            ).strip(),
+            "debit_account_id": expense_account.id,
+            "credit_account_id": treasury.id,
+            "amount": round(amount, 2),
+            "project_id": equipment.project_id if equipment else None,
+            "cost_center": f"معدة - {equipment.name}" if equipment else None,
+        })
+    replace_auto_journals(marker, payloads)
+
+
