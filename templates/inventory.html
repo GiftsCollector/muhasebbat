@@ -1,0 +1,328 @@
+{% extends 'layout.html' %}
+{% block content %}
+{% set tab = active_tab or 'balances' %}
+<div class="row g-3 fade-up screen-stack">
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">دورة المخزن</h2>
+          <p class="text-muted mb-0">تكويد الأصناف، الوارد، المنصرف، وأرصدة الأصناف في شاشة واحدة. المورد بيتسجل من أوامر الشراء.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('print_setup', screen='inventory') }}"><i class="bi bi-printer"></i> طباعة تقرير</a>
+          <a class="btn btn-outline-light" href="{{ url_for('export_screen', screen='inventory') }}"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+          <a class="btn btn-outline-light" href="{{ url_for('inventory_report') }}">تقرير التقييم</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="row g-3 summary-strip">
+      <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">عدد الأصناف</div><div class="h5 mb-0">{{ totals.item_count|qtynum }}</div></div></div>
+      <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">إجمالي الوارد</div><div class="h5 mb-0">{{ totals.in_qty|qtynum }}</div></div></div>
+      <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">إجمالي المنصرف</div><div class="h5 mb-0">{{ totals.out_qty|qtynum }}</div></div></div>
+      <div class="col-md-3"><div class="summary-card h-100"><div class="small text-muted">قيمة الأرصدة</div><div class="h5 mb-0">{{ totals.value|groupnum }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item"><a class="nav-link {% if tab == 'items' %}active{% endif %}" href="{{ url_for('inventory', tab='items') }}">تكويد الأصناف</a></li>
+        <li class="nav-item"><a class="nav-link {% if tab == 'in' %}active{% endif %}" href="{{ url_for('inventory', tab='in') }}">الوارد</a></li>
+        <li class="nav-item"><a class="nav-link {% if tab == 'out' %}active{% endif %}" href="{{ url_for('inventory', tab='out') }}">المنصرف</a></li>
+        <li class="nav-item"><a class="nav-link {% if tab == 'balances' %}active{% endif %}" href="{{ url_for('inventory', tab='balances') }}">أرصدة الأصناف</a></li>
+      </ul>
+
+      {% if tab == 'items' %}
+      <p class="text-muted small">كود الصنف بيتولّد تلقائيًا ولا يتكرر. الأصناف القديمة بتتكود من الحركات السابقة.</p>
+      <form method="post" class="mb-4">
+        <input type="hidden" name="action" value="save_item">
+        <input type="hidden" name="tab" value="items">
+        <div class="row g-3">
+          <div class="col-md-3"><label class="form-label">كود الصنف</label><input class="form-control" name="code" placeholder="{{ next_item_code }}"><div class="form-text">سيبه فاضي للكود التلقائي.</div></div>
+          <div class="col-md-4"><label class="form-label">اسم الصنف</label><input class="form-control" name="name" required placeholder="أسمنت / حديد / فلتر"></div>
+          <div class="col-md-2">
+            <label class="form-label">الوحدة</label>
+            <select class="form-select js-searchable-select" name="unit">
+              <option value="">—</option>
+              {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3"><label class="form-label">ملاحظات</label><input class="form-control" name="notes"></div>
+        </div>
+        <button class="btn btn-cyan mt-3">حفظ الصنف</button>
+      </form>
+      <form method="post" id="invItemsForm">
+        <input type="hidden" name="tab" value="items">
+        <input type="hidden" name="single_item_id" value="">
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <button class="btn btn-outline-danger btn-sm" name="action" value="delete_items" onclick="return confirm('حذف الأصناف المحددة من التكويد؟ الصنف الذي عليه حركات لن يُحذف.');">حذف المحدد</button>
+          <span class="small text-muted">علّم على صنف أو مجموعة أو الكل ثم احذف. الحذف من الصف لسه موجود.</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-borderless table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th><input type="checkbox" class="form-check-input js-inv-check-all" data-target="#invItemsForm .js-inv-pick" title="اختيار الكل"></th>
+                <th>الكود</th><th>اسم الصنف</th><th>الوحدة</th><th>ملاحظات</th><th>إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in stock_items %}
+                <tr>
+                  <td><input type="checkbox" class="form-check-input js-inv-pick" name="selected_item_id" value="{{ item.id }}" title="تحديد"></td>
+                  <td>{{ item.display_code }}</td>
+                  <td>{{ item.name }}</td>
+                  <td>{{ item.unit or '-' }}</td>
+                  <td>{{ item.notes or '-' }}</td>
+                  <td class="text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editItem{{ item.id }}">تعديل</button>
+                    <button type="submit" class="btn btn-sm btn-outline-danger" name="action" value="delete_item" data-item-id="{{ item.id }}" onclick="var holder=this.form.querySelector('[name=single_item_id]'); if(holder) holder.value=this.getAttribute('data-item-id'); return confirm('حذف تكويد الصنف؟ الحركات القديمة هتفضل.');">حذف</button>
+                  </td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6" class="text-center text-muted">لا توجد أصناف مكوّدة بعد</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </form>
+      {% for item in stock_items %}
+      <div class="modal fade" id="editItem{{ item.id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <form method="post">
+              <input type="hidden" name="action" value="update_item">
+              <input type="hidden" name="tab" value="items">
+              <input type="hidden" name="item_id" value="{{ item.id }}">
+              <div class="modal-header"><h5 class="modal-title">تعديل الصنف {{ item.display_code }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+              <div class="modal-body">
+                <div class="mb-3"><label class="form-label">الكود</label><input class="form-control" name="code" value="{{ item.code or item.display_code }}" required></div>
+                <div class="mb-3"><label class="form-label">اسم الصنف</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+                <div class="mb-3">
+                  <label class="form-label">الوحدة</label>
+                  <select class="form-select js-searchable-select" name="unit">
+                    <option value="">—</option>
+                    {% for unit in unit_options %}<option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="mb-0"><label class="form-label">ملاحظات</label><input class="form-control" name="notes" value="{{ item.notes or '' }}"></div>
+              </div>
+              <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button class="btn btn-cyan">حفظ التعديل</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% if tab == 'in' %}
+      {% with move_kind='in' %}{% include '_inventory_move_lines.html' %}{% endwith %}
+      {% endif %}
+
+      {% if tab == 'out' %}
+      {% with move_kind='out' %}{% include '_inventory_move_lines.html' %}{% endwith %}
+      {% endif %}
+
+      {% if tab == 'balances' %}
+      <p class="text-muted small mb-3">مجمّع كل صنف: المشروع، المخزن، الكود، الوارد، المنصرف، والرصيد.</p>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>المشروع</th>
+              <th>المخزن</th>
+              <th>كود الصنف</th>
+              <th>الصنف</th>
+              <th>الوارد</th>
+              <th>المنصرف</th>
+              <th>الرصيد</th>
+              <th>متوسط التكلفة</th>
+              <th>القيمة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stock_rows %}
+              <tr>
+                <td>{{ row.project.display_name if row.project else '-' }}</td>
+                <td>{{ row.warehouse }}</td>
+                <td>{{ row.item_code }}</td>
+                <td>{{ row.material }}</td>
+                <td>{{ row.receipt_qty|qtynum }}</td>
+                <td>{{ row.issue_qty|qtynum }}</td>
+                <td class="{% if row.qty < 0 %}text-danger{% endif %}">{{ row.qty|qtynum }}</td>
+                <td>{{ row.avg_cost|paynum }}</td>
+                <td>{{ row.value|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا يوجد رصيد مخزني بعد</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script>
+  (function() {
+    function lineValue(quantityEl, costEl) {
+      const quantity = parseFloat((quantityEl && quantityEl.value) || '0') || 0;
+      const unitCost = parseFloat((costEl && costEl.value) || '0') || 0;
+      return Math.max(quantity * unitCost, 0);
+    }
+    function bindMoneyFields(quantityEl, costEl, totalEl) {
+      if (!quantityEl || !costEl || !totalEl) return;
+      let syncing = false;
+      function fromQtyCost() {
+        if (syncing) return;
+        syncing = true;
+        totalEl.value = lineValue(quantityEl, costEl).toFixed(2);
+        syncing = false;
+      }
+      function fromTotal() {
+        if (syncing) return;
+        const quantity = parseFloat(quantityEl.value || '0') || 0;
+        const amount = parseFloat(totalEl.value || '0') || 0;
+        if (quantity > 0 && amount > 0) {
+          syncing = true;
+          costEl.value = (amount / quantity).toFixed(4);
+          syncing = false;
+        }
+      }
+      quantityEl.addEventListener('input', fromQtyCost);
+      costEl.addEventListener('input', fromQtyCost);
+      totalEl.addEventListener('input', fromTotal);
+      fromQtyCost();
+    }
+    function bindInvRow(row) {
+      bindMoneyFields(
+        row.querySelector('.js-inv-qty, [name="quantity"], [name="line_quantity"]'),
+        row.querySelector('.js-inv-cost, [name="unit_cost"], [name="line_unit_cost"]'),
+        row.querySelector('.js-inv-total, [name="line_amount"], [name="line_line_amount"]')
+      );
+      const itemSelect = row.querySelector('[name="stock_item_id"], [name="line_stock_item_id"]');
+      const unitSelect = row.querySelector('.js-inv-unit, [name="unit"], [name="line_unit"]');
+      if (itemSelect && unitSelect) {
+        itemSelect.addEventListener('change', function () {
+          const option = itemSelect.options[itemSelect.selectedIndex];
+          const unit = option && option.getAttribute('data-unit');
+          if (unit) unitSelect.value = unit;
+        });
+      }
+    }
+    document.querySelectorAll('.inv-line-row, [id^="editInv"] form').forEach(bindInvRow);
+
+    function invRowVisible(box) {
+      const row = box.closest('tr');
+      if (!row) return true;
+      return row.style.display !== 'none' && !row.hidden;
+    }
+    function invPicks(root) {
+      return Array.from(root.querySelectorAll('.js-inv-pick'));
+    }
+    function syncInvMaster(root) {
+      const master = root.querySelector('.js-inv-check-all');
+      if (!master) return;
+      const boxes = invPicks(root).filter(function (box) { return !box.disabled && invRowVisible(box); });
+      const checked = boxes.filter(function (box) { return box.checked; });
+      master.checked = boxes.length > 0 && checked.length === boxes.length;
+      master.indeterminate = checked.length > 0 && checked.length < boxes.length;
+    }
+    window.syncInvMaster = syncInvMaster;
+    document.querySelectorAll('.js-inv-check-all').forEach(function (master) {
+      master.addEventListener('change', function () {
+        const root = master.closest('form') || document;
+        invPicks(root).forEach(function (box) {
+          if (!box.disabled && invRowVisible(box)) box.checked = master.checked;
+        });
+        syncInvMaster(root);
+      });
+    });
+    document.querySelectorAll('.js-inv-pick').forEach(function (box) {
+      box.addEventListener('change', function () {
+        const root = box.closest('form');
+        if (root) syncInvMaster(root);
+      });
+    });
+    document.querySelectorAll('#invItemsForm, #invMovesForm').forEach(function (form) {
+      form.addEventListener('submit', function (event) {
+        const action = event.submitter && event.submitter.value;
+        if (action !== 'delete_items' && action !== 'delete_moves') return;
+        const checked = invPicks(form).filter(function (box) { return box.checked && !box.disabled; });
+        if (!checked.length) {
+          event.preventDefault();
+          alert('حدد صفًا واحدًا على الأقل، أو استخدم اختيار الكل.');
+        }
+      });
+    });
+
+    const linesBody = document.getElementById('invLinesBody');
+    const addBtn = document.querySelector('.add-inv-line');
+    function selectValue(row, name) {
+      const select = row.querySelector('select[name="' + name + '"]');
+      return select ? (select.value || '').trim() : '';
+    }
+    if (addBtn && linesBody) {
+      addBtn.addEventListener('click', function () {
+        const rows = linesBody.querySelectorAll('.inv-line-row');
+        const lastRow = rows[rows.length - 1];
+        const template = rows[0];
+        if (!template) return;
+        const clone = template.cloneNode(true);
+        clone.querySelectorAll('.searchable-select').forEach(function (wrap) {
+          const select = wrap.querySelector('select');
+          if (select) {
+            select.removeAttribute('data-search-ready');
+            wrap.parentNode.insertBefore(select, wrap);
+          }
+          wrap.remove();
+        });
+        clone.querySelectorAll('input').forEach(function (input) {
+          if (input.type === 'hidden') return;
+          if (input.type === 'date') {
+            input.value = lastRow && lastRow.querySelector('input[type="date"]')
+              ? lastRow.querySelector('input[type="date"]').value
+              : "{{ today_date }}";
+          } else if (input.type === 'number') {
+            input.value = input.name === 'line_line_amount' ? '0' : '';
+          } else {
+            input.value = '';
+          }
+        });
+        clone.querySelectorAll('select').forEach(function (select) {
+          select.removeAttribute('data-search-ready');
+          const carryNames = ['line_project_id', 'line_warehouse_name', 'line_destination_warehouse', 'line_storekeeper_name'];
+          const keep = lastRow && carryNames.indexOf(select.name) !== -1 ? selectValue(lastRow, select.name) : '';
+          select.value = keep || (select.name === 'line_warehouse_name' ? select.value : '');
+          if (!keep && select.name !== 'line_warehouse_name') select.value = '';
+        });
+        if (lastRow) {
+          const warehouse = selectValue(lastRow, 'line_warehouse_name');
+          const dest = selectValue(lastRow, 'line_destination_warehouse');
+          const project = selectValue(lastRow, 'line_project_id');
+          clone.querySelectorAll('select').forEach(function (select) {
+            if (select.name === 'line_project_id' && project) select.value = project;
+            if (select.name === 'line_warehouse_name' && warehouse) select.value = warehouse;
+            if (select.name === 'line_destination_warehouse' && dest) select.value = dest;
+          });
+        }
+        linesBody.appendChild(clone);
+        if (window.initSearchableSelects) window.initSearchableSelects(clone);
+        bindInvRow(clone);
+        const qty = clone.querySelector('[name="line_quantity"]');
+        if (qty) qty.focus();
+      });
+      linesBody.addEventListener('click', function (event) {
+        if (!event.target.matches('.remove-inv-line')) return;
+        if (linesBody.querySelectorAll('.inv-line-row').length > 1) {
+          event.target.closest('.inv-line-row').remove();
+        }
+      });
+    }
+  })();
+</script>
+{% endblock %}
