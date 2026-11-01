@@ -13,6 +13,7 @@ from models import (
     SupplierPayment, AccountingPeriod, DocumentAttachment, ActivityLog, Employee,
     PayrollSlip, EmployeeSalaryPayment, EmployeeAttendance, BOQItem,
 )
+from services.audit import keep_recorded_actor
 from services.immutability import JOURNAL_SOURCED_LOCK_MESSAGE
 
 SQLITE_MIGRATIONS = {
@@ -4248,6 +4249,47 @@ def _same_stored_value(current, new):
     return current == new
 
 
+def _journal_display_actor(entry):
+    """نفس الاسم اللي كشف الحساب بيعرضه لصاحب القيد."""
+    if entry.updated_by_name:
+        return entry.updated_by_id, entry.updated_by_name
+    return entry.created_by_id, entry.created_by_name
+
+
+def align_document_actor_with_journal(row, entry):
+    """حركة منسوخة من قيد اليومية تاخد صاحب القيد، مش المستخدم اللي كان فاتح البرنامج وقت النسخ."""
+    if row is None or entry is None:
+        return False
+    keep_recorded_actor(row)
+    _user_id, user_name = _journal_display_actor(entry)
+    if not user_name:
+        return False
+    changed = False
+    actor = {
+        "created_by_id": entry.created_by_id,
+        "created_by_name": entry.created_by_name,
+        "updated_by_id": _user_id,
+        "updated_by_name": user_name,
+    }
+    for key, value in actor.items():
+        if getattr(row, key) != value:
+            setattr(row, key, value)
+            changed = True
+    if not row.created_at and entry.created_at:
+        row.created_at = entry.created_at
+        changed = True
+    if not row.updated_at and (entry.updated_at or entry.created_at):
+        row.updated_at = entry.updated_at or entry.created_at
+        changed = True
+    if row.id:
+        for log in ActivityLog.query.filter_by(entity_type=type(row).__name__, entity_id=row.id).all():
+            if log.user_id != _user_id or log.user_name != user_name:
+                log.user_id = _user_id
+                log.user_name = user_name
+                changed = True
+    return changed
+
+
 def _upsert_journal_sourced_row(model, entry, defaults):
     """يرجع True بس لو المستند اتغير فعلًا، عشان المزامنة المتكررة ما تكتبش ولا تسجل «تعديل» وهمي."""
     existing = _query_journal_sourced(model, entry.id)
@@ -4264,11 +4306,14 @@ def _upsert_journal_sourced_row(model, entry, defaults):
     if row is None:
         row = model(**defaults)
         db.session.add(row)
+        align_document_actor_with_journal(row, entry)
         return True
     for key, value in defaults.items():
         if not _same_stored_value(getattr(row, key), value):
             setattr(row, key, value)
             changed = True
+    if align_document_actor_with_journal(row, entry):
+        changed = True
     return changed
 
 

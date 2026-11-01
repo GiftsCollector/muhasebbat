@@ -55,6 +55,15 @@ def current_actor():
     return None, "النظام"
 
 
+def keep_recorded_actor(obj):
+    """نسخة من قيد موجود. اسم صاحبها يتساب كما هو، ومش يتسجل كحركة جديدة."""
+    obj._keep_recorded_actor = True
+
+
+def _keeps_recorded_actor(obj):
+    return bool(getattr(obj, "_keep_recorded_actor", False))
+
+
 def is_tracked(obj):
     return isinstance(obj, TRACKED_TYPES) and not isinstance(obj, ActivityLog)
 
@@ -122,7 +131,7 @@ def _before_flush(session, flush_context, instances):
     pending = session.info.setdefault("activity_events", [])
 
     for obj in list(session.new):
-        if not is_tracked(obj):
+        if not is_tracked(obj) or _keeps_recorded_actor(obj):
             continue
         if isinstance(obj, ActorStamp):
             if not obj.created_at:
@@ -135,7 +144,7 @@ def _before_flush(session, flush_context, instances):
         pending.append({"kind": "new", "obj": obj, "action": detect_action(obj, is_new=True), "at": now, "user_id": user_id, "user_name": user_name})
 
     for obj in list(session.dirty):
-        if not is_tracked(obj) or obj in session.new:
+        if not is_tracked(obj) or obj in session.new or _keeps_recorded_actor(obj):
             continue
         if not sa_inspect(obj).modified:
             continue
