@@ -1,0 +1,23 @@
+{% set tabs = SCREEN_GROUPS.get(group_name) or [] %}
+{% set ns = namespace(count=0) %}
+{% for tab in tabs %}
+  {% if can_endpoint(tab.endpoint) %}{% set ns.count = ns.count + 1 %}{% endif %}
+{% endfor %}
+{% if ns.count > 1 %}
+<div class="col-12 no-print">
+  <div class="screen-hub" data-count="{{ ns.count }}">
+    <div class="screen-hub-cards">
+      {% for tab in tabs %}
+        {% if can_endpoint(tab.endpoint) %}
+        {% set is_active = request.endpoint == tab.endpoint or request.endpoint in (tab.extra or []) %}
+        <a class="screen-hub-card {% if is_active %}is-active{% endif %}" href="{{ url_for(tab.endpoint) }}">
+          <span class="screen-hub-icon" aria-hidden="true"><i class="bi {{ tab.icon }}"></i></span>
+          <strong>{{ tab.label }}</strong>
+          {% if tab.hint %}<span class="screen-hub-hint">{{ tab.hint }}</span>{% endif %}
+        </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
