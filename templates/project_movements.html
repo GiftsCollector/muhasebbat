@@ -1,0 +1,55 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  {% with group_name='projects' %}{% include '_screen_group_tabs.html' %}{% endwith %}
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h2 class="section-title">سجل المعاملات والتكاليف لكل مشروع</h2>
+      <p class="text-muted mb-0">كل حركة داخلة في تكلفة المشروع أو في الإيراد المحصّل: رقمها، تاريخها، المشروع، المستخدم اللي سجّلها، نوعها، المبلغ، والبيان. مجموع عمود التكلفة وعمود الإيراد هو نفس أرقام تقرير المشروع. قيمة العقد مش ظاهرة هنا لأنها مش حركة.</p>
+      {% if selected %}
+        <p class="mt-2 mb-0">معروض حركات: <strong>{{ selected.display_name }}</strong> — <a href="{{ url_for('project_movements') }}">كل المشاريع</a></p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      {% if not lines %}
+        <div class="alert alert-info mb-0">لا توجد حركات على المشاريع دي.</div>
+      {% else %}
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>رقم الحركة</th>
+              <th>التاريخ</th>
+              <th>كود المشروع</th>
+              <th>اسم المشروع</th>
+              <th>المستخدم</th>
+              <th>نوع الحركة</th>
+              <th data-sum="on">التكلفة</th>
+              <th data-sum="on">الإيراد</th>
+              <th>البيان</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+              <tr>
+                <td>{{ line.number }}</td>
+                <td>{{ line.date or '—' }}</td>
+                <td>{{ line.project_code }}</td>
+                <td><a href="{{ url_for('project_detail', project_id=line.project_id) }}">{{ line.project_name }}</a></td>
+                <td>{{ line.user_name }}</td>
+                <td>{{ line.kind }}</td>
+                <td>{{ line.cost|groupnum }}</td>
+                <td>{{ line.revenue|groupnum }}</td>
+                <td>{{ line.description }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
