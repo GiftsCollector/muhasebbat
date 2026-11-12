@@ -1,0 +1,29 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  <div class="col-lg-8 mx-auto">
+    <div class="glass-card p-4">
+      <h2 class="section-title">اختصار لاب إبراهيم</h2>
+      <p class="text-muted">الاختصار يتربط بالعنوان اللي فاتح منه المتصفح دلوقتي. نزّله من لاب إبراهيم وهو فاتح البرنامج، وبعدين احفظ الملف على سطح المكتب بتاعه — مش على الجهاز ده.</p>
+
+      <div class="alert {% if is_local %}alert-warning{% else %}alert-info{% endif %}">
+        العنوان الحالي: <strong dir="ltr">{{ app_url }}</strong>
+        {% if is_local %}
+        <div class="mt-2">العنوان ده محلي على الجهاز الحالي. لو إبراهيم على لاب تاني، افتح البرنامج من اللاب بتاعه أول مرة (أو بعنوان الشبكة لو السيرفر على جهاز ثاني)، وبعدين نزّل الاختصار من هناك.</div>
+        {% else %}
+        <div class="mt-2">العنوان ده ينفع يتحفظ على سطح مكتب إبراهيم طالما نفس الشبكة أو نفس الرابط الشغال.</div>
+        {% endif %}
+      </div>
+
+      <a class="btn btn-cyan mb-4" href="{{ url_for('download_desktop_url') }}">تنزيل اختصار المتصفح</a>
+
+      <h5 class="mb-2">لو نسخت مجلد البرنامج على لابه</h5>
+      <ol class="text-muted mb-0">
+        <li>انسخ مجلد البرنامج كاملًا على لاب إبراهيم.</li>
+        <li>من جوه المجلد شغّل الملف <span dir="ltr">put-shortcut-on-desktop.bat</span> — ده بيحط الاختصار على سطح مكتبه هو.</li>
+        <li>أو دبل كليك على <span dir="ltr">open-app.bat</span> يشغّل البرنامج ويفتح المتصفح.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}
