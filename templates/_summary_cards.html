@@ -1,0 +1,29 @@
+{% set layout = namespace(span=3) %}
+{% if cards|length <= 1 %}
+  {% set layout.span = 12 %}
+{% elif cards|length == 2 %}
+  {% set layout.span = 6 %}
+{% elif cards|length == 3 %}
+  {% set layout.span = 4 %}
+{% endif %}
+{% if summary_inline|default(false) %}
+<div class="row g-3 summary-strip mt-3">
+{% else %}
+<div class="col-12">
+  <div class="row g-3 summary-strip">
+{% endif %}
+  {% for card in cards %}
+  <div class="col-6 col-md-{{ layout.span }}">
+    <div class="summary-card h-100">
+      <div class="summary-label">{{ card.label }}</div>
+      <div class="summary-value">{{ card.value }}</div>
+      {% if card.hint %}<div class="summary-hint">{{ card.hint }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% if summary_inline|default(false) %}
+</div>
+{% else %}
+  </div>
+</div>
+{% endif %}
