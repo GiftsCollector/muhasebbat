@@ -1,0 +1,16 @@
+{% if pager and pager.total %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+  <span class="small text-muted">عرض {{ pager.start }}–{{ pager.end }} من {{ pager.total }}</span>
+  {% if pager.pages > 1 %}
+  <div class="d-flex gap-2 align-items-center">
+    {% if pager.prev_url %}
+    <a class="btn btn-sm btn-outline-light" href="{{ pager.prev_url }}">السابق</a>
+    {% endif %}
+    <span class="small">صفحة {{ pager.page }} من {{ pager.pages }}</span>
+    {% if pager.next_url %}
+    <a class="btn btn-sm btn-outline-light" href="{{ pager.next_url }}">التالي</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
