@@ -1,0 +1,12 @@
+<label class="form-label">العميل</label>
+<select class="form-select js-searchable-select mb-2" name="client_name" data-allow-custom="1" data-placeholder="ابحث واختر العميل أو اكتب اسمًا جديدًا">
+  <option value="">ابحث واختر العميل</option>
+  {% for name in client_names %}
+    <option value="{{ name }}" {% if selected_client == name %}selected{% endif %}>{{ name }}</option>
+  {% endfor %}
+  {% if selected_client and selected_client not in client_names %}
+    <option value="{{ selected_client }}" selected>{{ selected_client }}</option>
+  {% endif %}
+</select>
+<input type="hidden" name="client_name_new" value="">
+<div class="form-text mb-2">ابحث في العملاء المسجّلين أو اكتب اسمًا جديدًا مرة واحدة ليُنشأ حسابه في الشجرة.</div>
