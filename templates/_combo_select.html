@@ -1,0 +1,13 @@
+{% set _selected = selected if selected is defined else '' %}
+{% set _placeholder = placeholder if placeholder is defined else 'ابحث واختر' %}
+{% set _required = required if required is defined else false %}
+{% set _extra = extra_class if extra_class is defined else '' %}
+<select class="form-select js-searchable-select {{ _extra }}" name="{{ name }}" data-allow-custom="1" data-placeholder="{{ _placeholder }}"{% if _required %} required{% endif %}>
+  <option value="">{{ _placeholder }}</option>
+  {% for value in options %}
+    <option value="{{ value }}" {% if _selected == value %}selected{% endif %}>{{ value }}</option>
+  {% endfor %}
+  {% if _selected and _selected not in options %}
+    <option value="{{ _selected }}" selected>{{ _selected }}</option>
+  {% endif %}
+</select>
