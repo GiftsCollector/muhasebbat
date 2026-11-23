@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>&#8203;</title>
+  <style>@page { size: A4 portrait; margin: 0; }</style>
+</head>
+<body>
+  {% include '_print_watermark.html' %}
+  {% include '_print_toolbar.html' %}
+  <div class="print-frame">
+  {% set print_subtitle = 'التاريخ: ' ~ (entry.date or '-') ~ ' — الحالة: ' ~ entry.status ~ ' — المرجع: ' ~ (entry.reference or '-') %}
+  {% include '_print_letterhead.html' %}
+  <div class="print-meta">مركز التكلفة: {{ entry.project.display_name if entry.project else (entry.cost_center or '-') }}</div>
+  <div class="print-meta">البيان: {{ entry.description }}</div>
+  <table class="print-table">
+    <thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ entry.debit_account.code if entry.debit_account else '' }} — {{ entry.debit_account.name if entry.debit_account else '-' }}</td>
+        <td>{{ entry.amount|groupnum }}</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <td>{{ entry.credit_account.code if entry.credit_account else '' }} — {{ entry.credit_account.name if entry.credit_account else '-' }}</td>
+        <td>0</td>
+        <td>{{ entry.amount|groupnum }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% include '_print_signatures.html' %}
+  </div>
+</body>
+</html>

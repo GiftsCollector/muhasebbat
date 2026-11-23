@@ -1,0 +1,111 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row g-3 fade-up screen-stack">
+  {% with group_name='sales' %}{% include '_screen_group_tabs.html' %}{% endwith %}
+  <div class="col-12">
+    <div class="glass-card p-4">
+      <h2 class="section-title">العملاء والمواقع والمشاريع</h2>
+      <p class="text-muted mb-0">الصافي = مستخلصات العميل + نقلاته، والمحصل = كل فلوس دخلت خزنة أو بنك على حساب العميل. «رصيد كشف الحساب» هو نفس الرقم اللي في كشف حساب العميل.</p>
+    </div>
+  </div>
+  {% set cards = [
+    {'label': 'عدد العملاء', 'value': rows|length|groupnum},
+    {'label': 'إجمالي قيمة الأعمال (صافي)', 'value': totals.net|groupnum},
+    {'label': 'إجمالي المحصل', 'value': totals.collected|groupnum},
+    {'label': 'الرصيد المتبقي', 'value': totals.remaining|groupnum},
+  ] %}
+  {% include '_summary_cards.html' %}
+  <div class="col-12">
+    <div class="glass-card p-4">
+      <form method="get" class="row g-2 mb-3">
+        <div class="col-md-8"><input name="q" class="form-control" placeholder="ابحث باسم العميل" value="{{ search_q }}"></div>
+        <div class="col-md-2"><button class="btn btn-outline-light w-100">بحث</button></div>
+        <div class="col-md-2"><a class="btn btn-outline-light w-100" href="{{ url_for('sales_clients') }}">إعادة</a></div>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle text-center" data-totals="off" data-register="off">
+          <thead>
+            <tr>
+              <th>العميل</th>
+              <th>المشروع / الموقع</th>
+              <th>المسؤول / المهندس</th>
+              <th>رقم الهاتف</th>
+              <th>إجمالي الأعمال (صافي)</th>
+              <th>المحصل</th>
+              <th>المتبقي</th>
+              <th>رصيد كشف الحساب</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              {% set view = statement_views.get(row.account.id) if row.account else none %}
+              {% set span = row.projects|length if row.projects else 1 %}
+              {% if row.projects %}
+                {% for project in row.projects %}
+                  <tr>
+                    {% if loop.first %}
+                    <td rowspan="{{ span }}" class="text-start">
+                      <div class="fw-semibold">{{ row.name }}</div>
+                      {% if row.account %}{% with account_id=row.account.id %}{% include '_statement_btn.html' %}{% endwith %}{% endif %}
+                    </td>
+                    {% endif %}
+                    <td>{{ project.display_name }}</td>
+                    <td>{{ project.engineer_name or '' }}</td>
+                    <td dir="ltr">{{ project.contact_phone or '' }}</td>
+                    {% if loop.first %}
+                    <td rowspan="{{ span }}">{{ row.net|groupnum }}</td>
+                    <td rowspan="{{ span }}">{{ row.collected|groupnum }}</td>
+                    <td rowspan="{{ span }}">{{ row.remaining|groupnum }}</td>
+                    <td rowspan="{{ span }}">{% if view %}{{ view.closing_display|groupnum }} {% if view.closing_side != 'متزن' %}<span class="small text-muted">{{ view.closing_side }}</span>{% endif %}{% endif %}</td>
+                    {% endif %}
+                    <td>
+                      {% if can_endpoint('update_sales_project_contact') %}
+                      <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#editContact{{ project.id }}">تعديل</button>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td class="text-start">
+                    <div class="fw-semibold">{{ row.name }}</div>
+                    {% if row.account %}{% with account_id=row.account.id %}{% include '_statement_btn.html' %}{% endwith %}{% endif %}
+                  </td>
+                  <td></td><td></td><td></td>
+                  <td>{{ row.net|groupnum }}</td>
+                  <td>{{ row.collected|groupnum }}</td>
+                  <td>{{ row.remaining|groupnum }}</td>
+                  <td>{% if view %}{{ view.closing_display|groupnum }} {% if view.closing_side != 'متزن' %}<span class="small text-muted">{{ view.closing_side }}</span>{% endif %}{% endif %}</td>
+                  <td></td>
+                </tr>
+              {% endif %}
+            {% else %}
+              <tr><td colspan="9" class="text-center text-muted">لا يوجد عملاء</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for row in rows %}{% for project in row.projects %}
+<div class="modal fade" id="editContact{{ project.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('update_sales_project_contact', project_id=project.id) }}">
+        <input type="hidden" name="q" value="{{ search_q }}">
+        <div class="modal-header"><h5 class="modal-title">بيانات التواصل - {{ row.name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body">
+          <div class="mb-2 small text-muted">{{ project.display_name }}</div>
+          <div class="mb-3"><label class="form-label">المسؤول / المهندس المختص</label><input class="form-control" name="engineer_name" value="{{ project.engineer_name or '' }}"></div>
+          <div class="mb-2"><label class="form-label">رقم الهاتف</label><input class="form-control" name="contact_phone" value="{{ project.contact_phone or '' }}" inputmode="tel" dir="ltr"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button class="btn btn-cyan">حفظ</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}{% endfor %}
+{% endblock %}
