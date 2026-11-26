@@ -1,0 +1,137 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="row gy-4 fade-up">
+  {% with group_name='projects' %}{% include '_screen_group_tabs.html' %}{% endwith %}
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+        <div>
+          <h2 class="section-title">تقارير المشاريع</h2>
+          <p class="text-muted mb-0">صافي الربح أو الخسارة = الإيرادات المحصلة − إجمالي التكاليف. قيمة العقد ظاهرة للمقارنة ومش بتتحسب إيراد. المحصّل = سندات التحصيل المسجلة على المشروع + إيراد قيود اليومية. المباشرة = عمالة + مواد + معدات + باطن + عهد + سائقين + قيود المصروف. غير المباشرة = نسبة الإداريات. هامش الربحية = الصافي ÷ المحصّل. نسبة التحصيل = المحصّل ÷ قيمة العقد.</p>
+        </div>
+        <div class="no-print">{% include '_report_print_btn.html' %}</div>
+      </div>
+    </div>
+  </div>
+  {% set cards = [
+    {'label': 'عدد المشاريع', 'value': project_summaries|length|groupnum},
+    {'label': 'إجمالي التكاليف', 'value': (project_summaries|sum(attribute='total_cost'))|groupnum},
+    {'label': 'الإيرادات المحصلة', 'value': (project_summaries|sum(attribute='collected'))|groupnum},
+    {'label': 'صافي الربح أو الخسارة', 'value': (project_summaries|sum(attribute='profit'))|groupnum},
+  ] %}
+  {% include '_summary_cards.html' %}
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">ملخص كل مشروع</h5>
+      {% if not project_summaries %}
+        <div class="alert alert-info mb-3">لا توجد مشاريع لعرضها.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>اسم المشروع</th>
+              <th>كود المشروع</th>
+              <th data-sum="on">قيمة العقد</th>
+              <th data-sum="on">إجمالي الإيرادات المحصلة</th>
+              <th data-sum="on">التكاليف المباشرة</th>
+              <th data-sum="on">التكاليف غير المباشرة</th>
+              <th data-sum="on">إجمالي التكاليف</th>
+              <th data-sum="on">صافي الربح أو الخسارة</th>
+              <th data-sum="off">هامش الربحية</th>
+              <th data-sum="off">نسبة التحصيل من العقد</th>
+              <th data-sum="off">تقييم الأداء</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for summary in project_summaries %}
+              <tr>
+                <td><a href="{{ url_for('project_movements', project_id=summary.project.id) }}">{{ summary.project.project_name or summary.project.code }}</a></td>
+                <td>{{ summary.project.code }}</td>
+                <td>{{ summary.contract_value|groupnum }}</td>
+                <td>{{ summary.collected|groupnum }}</td>
+                <td>{{ summary.direct_cost|groupnum }}</td>
+                <td>{{ summary.indirect_cost|groupnum }}</td>
+                <td>{{ summary.total_cost|groupnum }}</td>
+                <td class="{% if summary.profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ summary.profit|groupnum }}</td>
+                <td>{{ summary.margin }}%</td>
+                <td>{{ summary.collection_ratio }}%</td>
+                <td>{{ summary.performance }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="11" class="text-center text-muted">لا توجد بيانات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-3">تفصيل التكاليف المباشرة وغير المباشرة</h5>
+      <p class="text-muted small">الأعمدة دي تفسير لإجمالي التكاليف، ومش معادلة تانية. مجموعها يساوي إجمالي التكاليف.</p>
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead>
+            <tr>
+              <th>المشروع</th>
+              <th data-sum="on">عمالة</th>
+              <th data-sum="on">مواد</th>
+              <th data-sum="on">معدات</th>
+              <th data-sum="on">عهد وسائقين</th>
+              <th data-sum="on">باطن</th>
+              <th data-sum="on">قيود يومية</th>
+              <th data-sum="on">إداريات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for summary in project_summaries %}
+              <tr>
+                <td>{{ summary.project.project_name or summary.project.code }}</td>
+                <td>{{ summary.labour_cost|groupnum }}</td>
+                <td>{{ summary.material_cost|groupnum }}</td>
+                <td>{{ summary.equipment_cost|groupnum }}</td>
+                <td>{{ summary.custody_driver_cost|groupnum }}</td>
+                <td>{{ summary.supervision_cost|groupnum }}</td>
+                <td>{{ summary.other_cost|groupnum }}</td>
+                <td>{{ summary.overhead_cost|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8" class="text-center text-muted">لا توجد بيانات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="glass-card p-4 shadow-sm">
+      <h5 class="mb-4">تكلفة البند لكل مشروع</h5>
+      {% if not item_summaries %}
+        <div class="alert alert-info mb-3">لا توجد بنود أعمال مرتبطة بالتكاليف حتى الآن.</div>
+      {% endif %}
+      <div class="table-responsive">
+        <table class="table table-borderless table-hover align-middle">
+          <thead><tr><th>البند</th><th>المشروع</th><th>الكمية</th><th>إجمالي التكلفة</th><th data-sum="off">التكلفة للوحدة</th></tr></thead>
+          <tbody>
+            {% for summary in item_summaries %}
+              <tr>
+                <td>{{ summary.item.name }}</td>
+                <td>{% if summary.item.project %}<a href="{{ url_for('project_detail', project_id=summary.item.project.id) }}">{{ summary.item.project.display_name }}</a>{% else %}-{% endif %}</td>
+                <td>{{ summary.quantity|qtynum }}</td>
+                <td>{{ summary.total_cost|groupnum }}</td>
+                <td>{{ summary.cost_per_unit|groupnum }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted">لا توجد بيانات</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
