@@ -1,0 +1,222 @@
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <input type="hidden" name="tab" value="{{ move_kind }}">
+  <div class="col-md-6">
+    <input type="search" name="q" value="{{ move_search or '' }}" class="form-control form-control-sm" placeholder="ابحث في الصنف أو المخزن أو المستلم أو التاريخ">
+  </div>
+  <div class="col-auto"><button class="btn btn-outline-light btn-sm">بحث</button></div>
+  {% if move_search %}<div class="col-auto"><a class="btn btn-outline-light btn-sm" href="{{ url_for('inventory', tab=move_kind) }}">إعادة</a></div>{% endif %}
+</form>
+<form method="post" id="invMovesForm">
+  <input type="hidden" name="tab" value="{{ move_kind }}">
+  <input type="hidden" name="redirect_to" value="inventory">
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <button class="btn btn-outline-danger btn-sm" name="action" value="delete_moves" onclick="return confirm('حذف الحركات المحددة وقيودها؟');">حذف المحدد</button>
+    <span class="small text-muted">علّم على حركة أو مجموعة أو كل حركات الصفحة ثم احذف.</span>
+  </div>
+<div class="table-responsive">
+  <table class="table table-borderless table-hover align-middle mb-0 js-inv-table">
+    <thead>
+      <tr>
+        <th><input type="checkbox" class="form-check-input js-inv-check-all" data-target="#invMovesForm .js-inv-pick" title="اختيار الكل"></th>
+        <th>المشروع</th>
+        <th>المخزن</th>
+        <th>الوجهة</th>
+        <th>الكود</th>
+        <th>الصنف</th>
+        <th>المستلم</th>
+        <th>أمين المخزن</th>
+        <th>الوحدة</th>
+        <th>الكمية</th>
+        <th>تكلفة الوحدة</th>
+        <th>القيمة</th>
+        <th>النوع</th>
+        <th>التاريخ</th>
+        <th>إجراءات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in move_items %}
+        <tr data-search="{{ item.stock_item.display_code if item.stock_item else '' }} {{ item.material_name }} {{ item.warehouse_name }} {{ item.destination_warehouse or '' }} {{ item.recipient_name or '' }} {{ item.storekeeper_name or '' }}">
+          <td>
+            {% if item.is_auto_from_po %}
+              <input type="checkbox" class="form-check-input" disabled title="حركة أمر الشراء تُحذف مع أمر الشراء">
+            {% else %}
+              <input type="checkbox" class="form-check-input js-inv-pick" name="selected_tx_id" value="{{ item.id }}" title="تحديد">
+            {% endif %}
+          </td>
+          <td>{{ item.project.display_name }}</td>
+          <td>{{ format_stock_location(item.warehouse_name, item.warehouse_account) }}</td>
+          <td>{{ format_stock_location(item.destination_warehouse, item.destination_account) if item.destination_warehouse or item.destination_account_id else '-' }}</td>
+          <td>{{ item.stock_item.display_code if item.stock_item else '-' }}</td>
+          <td>{{ item.material_name or '-' }}</td>
+          <td>{{ item.recipient_name or '-' }}</td>
+          <td>{{ item.storekeeper_name or '-' }}</td>
+          <td>{{ item.unit or '-' }}</td>
+          <td>{{ item.quantity|qtynum }}</td>
+          <td>{{ item.unit_cost|paynum }}</td>
+          <td>{{ ((item.quantity or 0) * (item.unit_cost or 0))|groupnum }}</td>
+          <td>
+            {{ item.transaction_type or '-' }}
+            {% if item.is_auto_from_po %}<span class="badge bg-info text-dark">من أمر شراء</span>{% endif %}
+          </td>
+          <td>{{ item.date or '-' }}</td>
+          <td class="text-nowrap">
+            {% if item.is_auto_from_po %}
+              <span class="text-muted">يُعدّل من أمر الشراء</span>
+            {% else %}
+              <button type="button" class="btn btn-sm btn-outline-info js-edit-inv"
+                data-action="{{ url_for('update_inventory_transaction', transaction_id=item.id) }}"
+                data-type="{{ item.transaction_type or '' }}"
+                data-project-id="{{ item.project_id or '' }}"
+                data-warehouse="{{ warehouse_choice_value(item.warehouse_name, item.warehouse_account_id, default_warehouse) }}"
+                data-destination="{{ warehouse_choice_value(item.destination_warehouse, item.destination_account_id, '') }}"
+                data-stock-item-id="{{ item.stock_item_id or '' }}"
+                data-supplier-id="{{ item.supplier_id or '' }}"
+                data-recipient="{{ item.recipient_name or '' }}"
+                data-equipment-id="{{ item.equipment_id or '' }}"
+                data-storekeeper="{{ item.storekeeper_name or '' }}"
+                data-unit="{{ item.unit or '' }}"
+                data-quantity="{{ item.quantity|qtynum }}"
+                data-unit-cost="{{ item.unit_cost|paynum }}"
+                data-amount="{{ ((item.quantity or 0) * (item.unit_cost or 0))|paynum }}"
+                data-date="{{ item.date or '' }}"
+                data-notes="{{ item.notes or '' }}"
+              >تعديل</button>
+              <button type="submit" class="btn btn-sm btn-outline-danger" formaction="{{ url_for('delete_operating_document', entity_type='inventory', entity_id=item.id) }}" formmethod="post" onclick="return confirm('سيتم حذف حركة المخزون وقيدها. متابعة؟');">حذف</button>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="15" class="text-center text-muted">لا توجد حركات</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</form>
+
+{% with pager=move_pager %}{% include '_page_nav.html' %}{% endwith %}
+
+<div class="modal fade" id="editInvModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="editInvForm">
+        <input type="hidden" name="tab" value="{{ move_kind }}">
+        <input type="hidden" name="transaction_type" id="editInvType" value="">
+        <div class="modal-header"><h5 class="modal-title">تعديل حركة مخزون</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">المشروع</label>
+              <select class="form-select js-searchable-select" name="project_id" id="editInvProject" required>
+                {% for p in projects %}<option value="{{ p.id }}">{{ p.display_name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">المخزن / الحساب المصدر</label>
+              {% with name='warehouse_name', groups=warehouse_groups, selected=default_warehouse, placeholder='اختر المخزن أو الخزنة أو الحساب', required=true %}
+                {% include '_warehouse_select.html' %}
+              {% endwith %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">الحساب الوجهة</label>
+              {% with name='destination_warehouse', groups=warehouse_groups, selected='', placeholder='اختر الحساب الوجهة للمنصرف', extra_class='js-inv-dest' %}
+                {% include '_warehouse_select.html' %}
+              {% endwith %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">الصنف</label>
+              <select class="form-select js-searchable-select" name="stock_item_id" data-placeholder="اختر الصنف">
+                <option value="">اختر الصنف</option>
+                {% for si in stock_items %}<option value="{{ si.id }}" data-unit="{{ si.unit or '' }}">{{ si.display_code }} — {{ si.name }}</option>{% endfor %}
+              </select>
+            </div>
+            {% if move_kind != 'out' %}
+            <div class="col-md-6">
+              <label class="form-label">المورد</label>
+              <select class="form-select js-searchable-select" name="supplier_id" data-placeholder="بدون مورد">
+                <option value="">-- بدون مورد --</option>
+                {% for sup in suppliers %}<option value="{{ sup.id }}">{{ sup.display_code }} - {{ sup.name }}</option>{% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            <div class="col-md-6">
+              <label class="form-label">المستلم</label>
+              <input class="form-control" name="recipient_name" placeholder="اسم المستلم">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">المعدة</label>
+              <select class="form-select js-searchable-select" name="equipment_id" data-placeholder="بدون معدة">
+                <option value="">-- بدون معدة --</option>
+                {% for eq in equipment_items|default([]) %}<option value="{{ eq.id }}">{{ eq.display_code }} — {{ eq.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">أمين المخزن</label>
+              <input class="form-control" name="storekeeper_name" placeholder="اسم أمين المخزن">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">الوحدة</label>
+              <select class="form-select js-searchable-select js-inv-unit" name="unit">
+                <option value="">—</option>
+                {% for unit in unit_options %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4"><label class="form-label">الكمية</label><input type="number" step="any" min="0.01" class="form-control js-inv-qty" name="quantity"></div>
+            <div class="col-md-4"><label class="form-label">تكلفة الوحدة</label><input type="number" step="any" min="0" class="form-control js-inv-cost" name="unit_cost"></div>
+            <div class="col-md-4"><label class="form-label">إجمالي القيمة</label><input type="number" step="0.01" min="0" class="form-control js-inv-total" name="line_amount"></div>
+            <div class="col-md-6"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date"></div>
+            <div class="col-12"><label class="form-label">ملاحظات</label><textarea class="form-control" name="notes"></textarea></div>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">إلغاء</button><button type="submit" class="btn btn-cyan">حفظ التعديل</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    const modalEl = document.getElementById('editInvModal');
+    const form = document.getElementById('editInvForm');
+    if (!modalEl || !form) return;
+
+    function field(name) { return form.querySelector('[name="' + name + '"]'); }
+    function setSelect(name, value) {
+      const select = field(name);
+      if (!select) return;
+      value = value || '';
+      if (value && !Array.from(select.options).some(function (o) { return o.value === value; })) {
+        const added = document.createElement('option');
+        added.value = value;
+        added.textContent = value;
+        select.appendChild(added);
+      }
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    function setInput(name, value) { const el = field(name); if (el) el.value = value || ''; }
+
+    document.querySelectorAll('.js-edit-inv').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const d = btn.dataset;
+        form.action = d.action;
+        document.getElementById('editInvType').value = d.type || '';
+        setSelect('project_id', d.projectId);
+        setSelect('warehouse_name', d.warehouse);
+        setSelect('destination_warehouse', d.destination);
+        setSelect('stock_item_id', d.stockItemId);
+        setSelect('equipment_id', d.equipmentId);
+        setSelect('supplier_id', d.supplierId);
+        setInput('recipient_name', d.recipient);
+        setInput('storekeeper_name', d.storekeeper);
+        // الوحدة تتحط بعد الصنف عشان تغيير الصنف ما يمسحش وحدة الحركة
+        setSelect('unit', d.unit);
+        setInput('quantity', d.quantity);
+        setInput('unit_cost', d.unitCost);
+        setInput('line_amount', d.amount);
+        setInput('date', d.date);
+        setInput('notes', d.notes);
+        if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      });
+    });
+  })();
+</script>
